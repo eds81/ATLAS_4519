@@ -196,32 +196,70 @@ function orbCenter(t) {
   let dx = 0, dy = 0;
   for (const s of ORB_SINES.x) dx += s.A * Math.sin(s.f * t + s.p);
   for (const s of ORB_SINES.y) dy += s.A * Math.sin(s.f * t + s.p);
-  // clamp: keep center between 30%–70% of each axis
   const cx = Math.max(0.30, Math.min(0.70, 0.50 + dx)) * W;
   const cy = Math.max(0.30, Math.min(0.70, 0.50 + dy)) * H;
   return { cx, cy };
 }
 
+// Analytical velocity (derivative of sum-of-sines) → gives movement direction
+function orbVelocity(t) {
+  let vx = 0, vy = 0;
+  for (const s of ORB_SINES.x) vx += s.A * s.f * Math.cos(s.f * t + s.p) * W;
+  for (const s of ORB_SINES.y) vy += s.A * s.f * Math.cos(s.f * t + s.p) * H;
+  const len = Math.sqrt(vx*vx + vy*vy) || 1;
+  return { vx: vx/len, vy: vy/len, speed: len };
+}
+
 // ── blob definitions ──────────────────────────────────────
-// Each blob: color (rgb), rx/ry radii (px), offset from orb center,
-// phase and speed for local drift, opacity multiplier
-// Colors: O gas → greens/reds, N gas → blues/purples
+// rHead = radius along movement axis, rPerp = radius perpendicular
+// ox/oy = local drift offset (in the orb's rotated frame)
 const BLOB_DEFS = [
   // Core bright green — oxygen dominant
-  { r:0,   g:255, b:102,  rx:180, ry:130, ox:0,    oy:0,    spd:0.000320, ph:0.00, baseOpacity:0.90, gas:'O' },
+  { r:0,   g:255, b:102,  rHead:260, rPerp:110, ox:0,    oy:0,    spd:0.000320, ph:0.00, baseOpacity:0.90, gas:'O' },
   // Secondary vivid green
-  { r:30,  g:255, b:80,   rx:140, ry:100, ox:60,   oy:-40,  spd:0.000270, ph:1.10, baseOpacity:0.75, gas:'O' },
+  { r:30,  g:255, b:80,   rHead:200, rPerp:85,  ox:50,   oy:-35,  spd:0.000270, ph:1.10, baseOpacity:0.75, gas:'O' },
   // Teal/cyan mid layer
-  { r:0,   g:255, b:200,  rx:160, ry:110, ox:-70,  oy:30,   spd:0.000210, ph:2.30, baseOpacity:0.60, gas:'O' },
+  { r:0,   g:255, b:200,  rHead:220, rPerp:90,  ox:-60,  oy:25,   spd:0.000210, ph:2.30, baseOpacity:0.60, gas:'O' },
   // Warm red — high altitude oxygen
-  { r:255, g:60,  b:80,   rx:110, ry:80,  ox:80,   oy:60,   spd:0.000350, ph:0.80, baseOpacity:0.30, gas:'O' },
+  { r:255, g:60,  b:80,   rHead:150, rPerp:65,  ox:70,   oy:50,   spd:0.000350, ph:0.80, baseOpacity:0.28, gas:'O' },
   // Electric blue — nitrogen
-  { r:40,  g:120, b:255,  rx:150, ry:100, ox:-50,  oy:-60,  spd:0.000290, ph:3.50, baseOpacity:0.55, gas:'N' },
+  { r:40,  g:120, b:255,  rHead:200, rPerp:80,  ox:-40,  oy:-50,  spd:0.000290, ph:3.50, baseOpacity:0.50, gas:'N' },
   // Deep magenta — nitrogen outer wisp
-  { r:180, g:0,   b:255,  rx:130, ry:90,  ox:90,   oy:-20,  spd:0.000240, ph:1.80, baseOpacity:0.40, gas:'N' },
+  { r:180, g:0,   b:255,  rHead:175, rPerp:70,  ox:80,   oy:-15,  spd:0.000240, ph:1.80, baseOpacity:0.38, gas:'N' },
   // Violet fringe
-  { r:120, g:40,  b:255,  rx:100, ry:70,  ox:-80,  oy:50,   spd:0.000310, ph:2.90, baseOpacity:0.30, gas:'N' },
+  { r:120, g:40,  b:255,  rHead:140, rPerp:58,  ox:-70,  oy:45,   spd:0.000310, ph:2.90, baseOpacity:0.28, gas:'N' },
 ];
+
+// Tail segments: drawn behind orb in the opposite-of-velocity direction
+const TAIL_DEFS = [
+  { r:0,   g:255, b:120, dist:200, rHead:180, rPerp:55, opacity:0.38, blur:70,  gas:'O' },
+  { r:0,   g:200, b:255, dist:340, rHead:140, rPerp:40, opacity:0.22, blur:80,  gas:'O' },
+  { r:100, g:0,   b:255, dist:470, rHead:110, rPerp:30, opacity:0.14, blur:90,  gas:'N' },
+  { r:60,  g:0,   b:200, dist:590, rHead:80,  rPerp:22, opacity:0.07, blur:100, gas:'N' },
+];
+
+// ── helper: draw one elongated blob ──────────────────────
+function drawBlob(x, y, rHead, rPerp, angle, r, g, b, eff, blurPx) {
+  if (eff < 0.005) return;
+  ctx.save();
+  ctx.filter    = `blur(${blurPx}px)`;
+  ctx.globalAlpha = eff;
+  // Rotate so rHead aligns with movement direction
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.scale(1, rPerp / rHead);
+  // Draw radial gradient as circle; scale makes it elliptical
+  const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, rHead);
+  grad.addColorStop(0,    `rgba(${r},${g},${b},1)`);
+  grad.addColorStop(0.45, `rgba(${r},${g},${b},0.60)`);
+  grad.addColorStop(0.80, `rgba(${r},${g},${b},0.15)`);
+  grad.addColorStop(1,    `rgba(${r},${g},${b},0)`);
+  ctx.beginPath();
+  ctx.arc(0, 0, rHead, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.restore();
+}
 
 // ── draw aurora orb ───────────────────────────────────────
 function drawAurora(t) {
@@ -230,67 +268,45 @@ function drawAurora(t) {
   const intens = sol * latF;
   if (intens < 0.02) return;
 
-  // Global breath pulse (4-second cycle)
-  const breath = 0.80 + 0.20 * Math.sin(t * 0.000785 * 2); // ~4s period
-
+  const breath = 0.80 + 0.20 * Math.sin(t * 0.001570); // ~4s pulse
   const { cx, cy } = orbCenter(t);
+  const { vx, vy } = orbVelocity(t);
+  const angle = Math.atan2(vy, vx); // movement direction angle
+  const altScale = 0.85 + live.altitude * 0.30;
 
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
 
+  // ── tail segments (drawn first, behind body) ────────────
+  for (const td of TAIL_DEFS) {
+    const gasScale = td.gas === 'O' ? live.oxygen : live.nitrogen;
+    const eff = td.opacity * gasScale * intens * breath;
+    // Position tail opposite to movement direction
+    const tx = cx - vx * td.dist;
+    const ty = cy - vy * td.dist;
+    drawBlob(tx, ty, td.rHead * altScale, td.rPerp * altScale,
+             angle, td.r, td.g, td.b, eff, td.blur);
+  }
+
+  // ── main body blobs ─────────────────────────────────────
   for (const bd of BLOB_DEFS) {
     const gasScale = bd.gas === 'O' ? live.oxygen : live.nitrogen;
     const eff = bd.baseOpacity * gasScale * intens * breath;
     if (eff < 0.01) continue;
 
-    // Local blob drift within orb
-    const localX = cx + bd.ox * Math.sin(t * bd.spd + bd.ph);
-    const localY = cy + bd.oy * Math.cos(t * bd.spd + bd.ph);
+    // Local drift within the orb's rotated frame
+    const driftAlong = bd.ox * Math.sin(t * bd.spd + bd.ph);
+    const driftPerp  = bd.oy * Math.cos(t * bd.spd + bd.ph);
+    const localX = cx + vx * driftAlong - vy * driftPerp;
+    const localY = cy + vy * driftAlong + vx * driftPerp;
 
-    // Scale radii slightly with altitude
-    const altScale = 0.85 + live.altitude * 0.30;
-    const rx = bd.rx * altScale;
-    const ry = bd.ry * altScale;
+    const rH = bd.rHead * altScale;
+    const rP = bd.rPerp * altScale;
 
-    // Draw as radial gradient ellipse with heavy blur
-    ctx.save();
-    ctx.filter = 'blur(55px)';
-    ctx.globalAlpha = eff;
-
-    // Scale ctx to turn circle gradient into ellipse
-    ctx.translate(localX, localY);
-    ctx.scale(1, ry / rx);
-    ctx.translate(-localX, -localY);
-
-    const grad = ctx.createRadialGradient(localX, localY, 0, localX, localY, rx);
-    grad.addColorStop(0,   `rgba(${bd.r},${bd.g},${bd.b},1)`);
-    grad.addColorStop(0.45,`rgba(${bd.r},${bd.g},${bd.b},0.65)`);
-    grad.addColorStop(0.75,`rgba(${bd.r},${bd.g},${bd.b},0.20)`);
-    grad.addColorStop(1,   `rgba(${bd.r},${bd.g},${bd.b},0)`);
-
-    ctx.beginPath();
-    ctx.arc(localX, localY, rx, 0, Math.PI * 2);
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    ctx.restore();
-
-    // Second tighter pass for inner brightness
-    ctx.save();
-    ctx.filter = 'blur(20px)';
-    ctx.globalAlpha = eff * 0.55;
-    ctx.translate(localX, localY);
-    ctx.scale(1, ry / rx);
-    ctx.translate(-localX, -localY);
-    const grad2 = ctx.createRadialGradient(localX, localY, 0, localX, localY, rx * 0.5);
-    grad2.addColorStop(0,   `rgba(${bd.r},${bd.g},${bd.b},1)`);
-    grad2.addColorStop(0.6, `rgba(${bd.r},${bd.g},${bd.b},0.4)`);
-    grad2.addColorStop(1,   `rgba(${bd.r},${bd.g},${bd.b},0)`);
-    ctx.beginPath();
-    ctx.arc(localX, localY, rx * 0.5, 0, Math.PI * 2);
-    ctx.fillStyle = grad2;
-    ctx.fill();
-    ctx.restore();
+    // Wide glow pass
+    drawBlob(localX, localY, rH, rP, angle, bd.r, bd.g, bd.b, eff * 0.45, 55);
+    // Bright inner pass
+    drawBlob(localX, localY, rH * 0.48, rP * 0.48, angle, bd.r, bd.g, bd.b, eff * 0.80, 18);
   }
 
   ctx.restore();
