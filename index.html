@@ -5,233 +5,73 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Aurora A La Carte</title>
   <style>
-    *, *::before, *::after {
-      margin: 0; padding: 0; box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
-
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
     :root {
       --green:    #00ff88;
       --purple:   #9955ff;
       --blue:     #44aaff;
       --gold:     #ffcc44;
-      --panel-bg: rgba(2, 8, 28, 0.96);
-      --border:   rgba(80, 200, 140, 0.22);
+      --panel-bg: rgba(2,8,28,0.96);
+      --border:   rgba(80,200,140,0.22);
       --text:     #b0e8cc;
-      --label:    rgba(140, 210, 175, 0.65);
+      --label:    rgba(140,210,175,0.65);
     }
+    html, body { width:100%; height:100%; overflow:hidden; background:#000; font-family:'Georgia',serif; color:var(--text); touch-action:none; user-select:none; }
+    canvas { display:block; position:fixed; inset:0; z-index:0; }
 
-    html, body {
-      width: 100%; height: 100%;
-      overflow: hidden;
-      background: #000;
-      font-family: 'Georgia', serif;
-      color: var(--text);
-      touch-action: none;
-      user-select: none;
-    }
+    #flash { position:fixed; inset:0; z-index:5; background:radial-gradient(ellipse at 50% 35%, rgba(80,255,160,0.18), transparent 60%); pointer-events:none; opacity:0; transition:opacity 0.08s; }
+    #flash.on { opacity:1; }
 
-    #aurora-canvas {
-      position: fixed; inset: 0; z-index: 0;
-      display: block; width: 100%; height: 100%;
-    }
+    #aurora-name { position:fixed; top:18px; left:50%; transform:translateX(-50%); z-index:20; font-size:1rem; letter-spacing:0.13em; color:rgba(180,255,220,0.9); text-shadow:0 0 22px rgba(0,255,120,0.5),0 0 50px rgba(0,200,100,0.2); pointer-events:none; white-space:nowrap; opacity:0; transition:opacity 1.2s ease; }
+    #aurora-name.show { opacity:1; }
 
-    /* flash reveal */
-    #flash {
-      position: fixed; inset: 0; z-index: 5;
-      background: radial-gradient(ellipse at 50% 35%, rgba(80,255,160,0.15), transparent 60%);
-      pointer-events: none; opacity: 0;
-      transition: opacity 0.08s;
-    }
-    #flash.on { opacity: 1; }
+    #science-tip { position:fixed; bottom:10px; left:50%; transform:translateX(-50%); z-index:20; font-size:0.68rem; letter-spacing:0.04em; color:rgba(130,200,170,0.6); max-width:460px; text-align:center; line-height:1.5; pointer-events:none; opacity:0; transition:opacity 1.5s ease; }
+    #science-tip.show { opacity:1; }
 
-    /* aurora name */
-    #aurora-name {
-      position: fixed; top: 18px; left: 50%;
-      transform: translateX(-50%);
-      z-index: 20;
-      font-size: 1rem; letter-spacing: 0.13em;
-      color: rgba(180,255,220,0.9);
-      text-shadow: 0 0 22px rgba(0,255,120,0.5), 0 0 50px rgba(0,200,100,0.2);
-      pointer-events: none; white-space: nowrap;
-      opacity: 0; transition: opacity 1.2s ease;
-    }
-    #aurora-name.show { opacity: 1; }
+    #tab { position:fixed; bottom:0; left:50%; transform:translateX(-50%); z-index:30; background:var(--panel-bg); border:1px solid var(--border); border-bottom:none; border-radius:12px 12px 0 0; padding:7px 22px 5px; font-size:0.70rem; letter-spacing:0.14em; color:var(--label); cursor:pointer; font-family:inherit; transition:color 0.2s; }
+    #tab:active { color:var(--green); }
 
-    /* science tip */
-    #science-tip {
-      position: fixed; bottom: 10px; left: 50%;
-      transform: translateX(-50%);
-      z-index: 20;
-      font-size: 0.68rem; letter-spacing: 0.04em;
-      color: rgba(130,200,170,0.6);
-      max-width: 460px; text-align: center;
-      line-height: 1.5;
-      pointer-events: none;
-      opacity: 0; transition: opacity 1.5s ease;
-    }
-    #science-tip.show { opacity: 1; }
+    #panel { position:fixed; bottom:0; left:0; right:0; z-index:25; background:var(--panel-bg); border-top:1px solid var(--border); padding:16px 20px 24px; display:flex; flex-direction:column; gap:13px; transform:translateY(100%); transition:transform 0.36s cubic-bezier(0.25,0.46,0.45,0.94); }
+    #panel.open { transform:translateY(0); }
+    .panel-head { display:flex; align-items:center; justify-content:space-between; }
+    .panel-title { font-size:1.2rem; letter-spacing:0.06em; color:var(--green); text-shadow:0 0 16px rgba(0,255,120,0.45); }
+    .panel-sub { font-size:0.65rem; letter-spacing:0.07em; color:var(--label); margin-top:2px; }
 
-    /* toggle tab */
-    #tab {
-      position: fixed; bottom: 0; left: 50%;
-      transform: translateX(-50%);
-      z-index: 30;
-      background: var(--panel-bg);
-      border: 1px solid var(--border); border-bottom: none;
-      border-radius: 12px 12px 0 0;
-      padding: 7px 22px 5px;
-      font-size: 0.70rem; letter-spacing: 0.14em;
-      color: var(--label); cursor: pointer;
-      font-family: inherit;
-      transition: color 0.2s;
-    }
-    #tab:active { color: var(--green); }
+    #proj-btn { background:rgba(60,20,100,0.35); border:1px solid rgba(153,85,255,0.4); border-radius:18px; color:rgba(190,140,255,0.8); padding:7px 14px; font-size:0.76rem; letter-spacing:0.05em; font-family:inherit; cursor:pointer; transition:all 0.2s; }
+    #proj-btn:active { background:rgba(80,30,140,0.55); box-shadow:0 0 18px rgba(153,85,255,0.35); }
 
-    /* panel */
-    #panel {
-      position: fixed; bottom: 0; left: 0; right: 0;
-      z-index: 25;
-      background: var(--panel-bg);
-      border-top: 1px solid var(--border);
-      padding: 16px 20px 24px;
-      display: flex; flex-direction: column; gap: 13px;
-      transform: translateY(100%);
-      transition: transform 0.36s cubic-bezier(0.25,0.46,0.45,0.94);
-    }
-    #panel.open { transform: translateY(0); }
+    .ingredients { display:grid; grid-template-columns:repeat(5,1fr); gap:10px 14px; }
+    @media(max-width:600px){ .ingredients{grid-template-columns:repeat(3,1fr);} }
+    .ingredient { display:flex; flex-direction:column; align-items:center; gap:6px; }
+    .ingredient .ing-icon { font-size:1.5rem; line-height:1; }
+    .ingredient label { font-size:0.60rem; letter-spacing:0.08em; text-transform:uppercase; color:var(--label); text-align:center; line-height:1.35; }
+    .ingredient .val-lbl { font-size:0.65rem; color:var(--text); min-height:1em; }
 
-    .panel-head {
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .panel-title {
-      font-size: 1.2rem; letter-spacing: 0.06em;
-      color: var(--green);
-      text-shadow: 0 0 16px rgba(0,255,120,0.45);
-    }
-    .panel-sub {
-      font-size: 0.65rem; letter-spacing: 0.07em;
-      color: var(--label); margin-top: 2px;
-    }
+    input[type="range"] { -webkit-appearance:none; appearance:none; width:100%; height:5px; border-radius:3px; outline:none; cursor:pointer; background:rgba(255,255,255,0.08); }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 0 9px rgba(255,255,255,0.4); cursor:pointer; }
+    input[type="range"].green  { accent-color:var(--green); }
+    input[type="range"].purple { accent-color:var(--purple); }
+    input[type="range"].gold   { accent-color:var(--gold); }
+    input[type="range"].blue   { accent-color:var(--blue); }
 
-    #proj-btn {
-      background: rgba(60,20,100,0.35);
-      border: 1px solid rgba(153,85,255,0.4);
-      border-radius: 18px;
-      color: rgba(190,140,255,0.8);
-      padding: 7px 14px;
-      font-size: 0.76rem; letter-spacing: 0.05em;
-      font-family: inherit; cursor: pointer;
-      transition: all 0.2s;
-    }
-    #proj-btn:active {
-      background: rgba(80,30,140,0.55);
-      box-shadow: 0 0 18px rgba(153,85,255,0.35);
-    }
+    .solar-row { display:flex; gap:5px; justify-content:center; }
+    .sol-btn { width:33px; height:33px; border-radius:50%; border:2px solid rgba(255,200,60,0.18); background:rgba(255,180,0,0.05); color:rgba(255,200,60,0.28); font-size:0.9rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.18s; font-family:inherit; }
+    .sol-btn.lit { border-color:rgba(255,200,60,0.85); background:rgba(255,180,0,0.22); color:var(--gold); box-shadow:0 0 11px rgba(255,180,0,0.32); }
 
-    /* ingredient grid */
-    .ingredients {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 10px 14px;
-    }
-    @media (max-width: 600px) {
-      .ingredients { grid-template-columns: repeat(3, 1fr); }
-    }
+    #bake-btn { width:100%; padding:14px; background:linear-gradient(135deg,#071f14 0%,#0d3d23 100%); border:1px solid rgba(0,255,120,0.3); border-radius:11px; color:#7affb0; font-size:1.02rem; letter-spacing:0.08em; font-family:inherit; cursor:pointer; text-shadow:0 0 11px rgba(0,255,100,0.35); box-shadow:0 0 22px rgba(0,180,80,0.07); transition:all 0.18s; }
+    #bake-btn:active { background:linear-gradient(135deg,#0d3d23 0%,#175e36 100%); box-shadow:0 0 32px rgba(0,255,100,0.22); }
 
-    .ingredient {
-      display: flex; flex-direction: column;
-      align-items: center; gap: 6px;
-    }
-    .ingredient .ing-icon {
-      font-size: 1.5rem; line-height: 1;
-    }
-    .ingredient label {
-      font-size: 0.60rem; letter-spacing: 0.08em;
-      text-transform: uppercase; color: var(--label);
-      text-align: center; line-height: 1.35;
-    }
-    .ingredient .val-lbl {
-      font-size: 0.65rem; color: var(--text); min-height: 1em;
-    }
-
-    input[type="range"] {
-      -webkit-appearance: none; appearance: none;
-      width: 100%; height: 5px; border-radius: 3px;
-      outline: none; cursor: pointer;
-      background: rgba(255,255,255,0.08);
-    }
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 22px; height: 22px; border-radius: 50%;
-      background: #fff;
-      box-shadow: 0 0 9px rgba(255,255,255,0.4);
-      cursor: pointer;
-    }
-    input[type="range"].green  { accent-color: var(--green); }
-    input[type="range"].purple { accent-color: var(--purple); }
-    input[type="range"].blue   { accent-color: var(--blue); }
-    input[type="range"].gold   { accent-color: var(--gold); }
-    input[type="range"].white  { accent-color: #fff; }
-
-    .solar-row { display: flex; gap: 5px; justify-content: center; }
-    .sol-btn {
-      width: 33px; height: 33px; border-radius: 50%;
-      border: 2px solid rgba(255,200,60,0.18);
-      background: rgba(255,180,0,0.05);
-      color: rgba(255,200,60,0.28);
-      font-size: 0.9rem; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: all 0.18s; font-family: inherit;
-    }
-    .sol-btn.lit {
-      border-color: rgba(255,200,60,0.85);
-      background: rgba(255,180,0,0.22);
-      color: var(--gold);
-      box-shadow: 0 0 11px rgba(255,180,0,0.32);
-    }
-
-    #bake-btn {
-      width: 100%; padding: 14px;
-      background: linear-gradient(135deg, #071f14 0%, #0d3d23 100%);
-      border: 1px solid rgba(0,255,120,0.3);
-      border-radius: 11px;
-      color: #7affb0; font-size: 1.02rem;
-      letter-spacing: 0.08em; font-family: inherit;
-      cursor: pointer;
-      text-shadow: 0 0 11px rgba(0,255,100,0.35);
-      box-shadow: 0 0 22px rgba(0,180,80,0.07);
-      transition: all 0.18s;
-    }
-    #bake-btn:active {
-      background: linear-gradient(135deg, #0d3d23 0%, #175e36 100%);
-      box-shadow: 0 0 32px rgba(0,255,100,0.22);
-    }
-
-    /* projection overlay */
-    #proj-overlay {
-      position: fixed; inset: 0; z-index: 50;
-      display: none; align-items: flex-end; justify-content: center;
-      padding-bottom: 16px;
-    }
-    #proj-overlay.active { display: flex; }
-    #proj-overlay-exit {
-      background: rgba(0,0,0,0.3);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 18px; color: rgba(255,255,255,0.25);
-      padding: 7px 16px; font-size: 0.70rem;
-      letter-spacing: 0.12em; cursor: pointer;
-      font-family: inherit;
-    }
+    #proj-overlay { position:fixed; inset:0; z-index:50; display:none; align-items:flex-end; justify-content:center; padding-bottom:16px; }
+    #proj-overlay.active { display:flex; }
+    #proj-overlay-exit { background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:18px; color:rgba(255,255,255,0.25); padding:7px 16px; font-size:0.70rem; letter-spacing:0.12em; cursor:pointer; font-family:inherit; }
   </style>
 </head>
 <body>
 
-<canvas id="aurora-canvas"></canvas>
+<canvas id="c"></canvas>
 <div id="flash"></div>
 <div id="aurora-name"></div>
 <div id="science-tip"></div>
-
 <button id="tab">&#9650; RECIPE</button>
 
 <div id="panel">
@@ -244,8 +84,7 @@
   </div>
 
   <div class="ingredients">
-
-    <div class="ingredient" style="grid-column: span 2;">
+    <div class="ingredient" style="grid-column:span 2;">
       <div class="ing-icon">&#9728;&#65039;</div>
       <label>Solar Storm (Kp)</label>
       <div class="solar-row" id="solar-row">
@@ -259,14 +98,14 @@
     </div>
 
     <div class="ingredient">
-      <div class="ing-icon" style="color:#44ff88; font-size:1.3rem; font-weight:bold;">O</div>
+      <div class="ing-icon" style="color:#44ff88;font-size:1.3rem;font-weight:bold;">O</div>
       <label>Oxygen<br><span style="font-size:0.52rem;opacity:0.7">Green &amp; Red</span></label>
       <input type="range" class="green" id="sl-oxygen"   min="0" max="100" value="75">
       <div class="val-lbl" id="val-oxygen">75%</div>
     </div>
 
     <div class="ingredient">
-      <div class="ing-icon" style="color:#9955ff; font-size:1.3rem; font-weight:bold;">N</div>
+      <div class="ing-icon" style="color:#9955ff;font-size:1.3rem;font-weight:bold;">N</div>
       <label>Nitrogen<br><span style="font-size:0.52rem;opacity:0.7">Blue &amp; Purple</span></label>
       <input type="range" class="purple" id="sl-nitrogen" min="0" max="100" value="40">
       <div class="val-lbl" id="val-nitrogen">40%</div>
@@ -274,18 +113,17 @@
 
     <div class="ingredient">
       <div class="ing-icon">&#127758;</div>
-      <label>How Far<br>North?</label>
-      <input type="range" class="gold" id="sl-latitude" min="40" max="85" value="65">
+      <label>How Far North?</label>
+      <input type="range" class="gold" id="sl-latitude"  min="40" max="85" value="65">
       <div class="val-lbl" id="val-latitude">65&deg;N</div>
     </div>
 
     <div class="ingredient">
       <div class="ing-icon">&#127769;</div>
       <label>Altitude<br><span style="font-size:0.52rem;opacity:0.7">100–300 km</span></label>
-      <input type="range" class="blue" id="sl-altitude" min="0" max="100" value="50">
+      <input type="range" class="blue" id="sl-altitude"  min="0" max="100" value="50">
       <div class="val-lbl" id="val-altitude">Mid</div>
     </div>
-
   </div>
 
   <button id="bake-btn">&#127859; Bake My Aurora!</button>
@@ -296,276 +134,214 @@
 </div>
 
 <script>
-// ── Shared live / target params (driven by UI sliders) ─────
+// ── live params ───────────────────────────────────────────
 const live   = { solar:1, oxygen:0.75, nitrogen:0.40, latitude:65, altitude:0.50 };
 const target = { ...live };
+function lerpParams() {
+  for (const k in live) live[k] += (target[k] - live[k]) * 0.016;
+}
 
+// ── canvas ────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  spawnStars();
+}
+window.addEventListener('resize', resize);
+
+// ── stars ─────────────────────────────────────────────────
+let stars = [];
+function spawnStars() {
+  stars = [];
+  for (let i = 0; i < 180; i++) {
+    stars.push({
+      x:  Math.random() * W,
+      y:  Math.random() * H,
+      r:  Math.random() * 0.6 + 0.3,
+      a:  Math.random() * 0.4 + 0.3,
+      tw: Math.random() * Math.PI * 2
+    });
+  }
+}
+function drawStars(t) {
+  for (const s of stars) {
+    const tw = 0.7 + 0.3 * Math.sin(t * 0.0007 + s.tw);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${(s.a * tw).toFixed(3)})`;
+    ctx.fill();
+  }
+}
+
+// ── orb wandering ─────────────────────────────────────────
+// Sum of slow sines → organic non-repeating drift
+const ORB_SINES = {
+  x: [
+    { A: 0.14, f: 0.000210, p: 0.00 },
+    { A: 0.08, f: 0.000134, p: 1.57 },
+    { A: 0.05, f: 0.000380, p: 0.88 },
+  ],
+  y: [
+    { A: 0.10, f: 0.000177, p: 0.70 },
+    { A: 0.06, f: 0.000260, p: 2.30 },
+    { A: 0.04, f: 0.000430, p: 1.20 },
+  ],
+};
+
+function orbCenter(t) {
+  let dx = 0, dy = 0;
+  for (const s of ORB_SINES.x) dx += s.A * Math.sin(s.f * t + s.p);
+  for (const s of ORB_SINES.y) dy += s.A * Math.sin(s.f * t + s.p);
+  // clamp: keep center between 30%–70% of each axis
+  const cx = Math.max(0.30, Math.min(0.70, 0.50 + dx)) * W;
+  const cy = Math.max(0.30, Math.min(0.70, 0.50 + dy)) * H;
+  return { cx, cy };
+}
+
+// ── blob definitions ──────────────────────────────────────
+// Each blob: color (rgb), rx/ry radii (px), offset from orb center,
+// phase and speed for local drift, opacity multiplier
+// Colors: O gas → greens/reds, N gas → blues/purples
+const BLOB_DEFS = [
+  // Core bright green — oxygen dominant
+  { r:0,   g:255, b:102,  rx:180, ry:130, ox:0,    oy:0,    spd:0.000320, ph:0.00, baseOpacity:0.90, gas:'O' },
+  // Secondary vivid green
+  { r:30,  g:255, b:80,   rx:140, ry:100, ox:60,   oy:-40,  spd:0.000270, ph:1.10, baseOpacity:0.75, gas:'O' },
+  // Teal/cyan mid layer
+  { r:0,   g:255, b:200,  rx:160, ry:110, ox:-70,  oy:30,   spd:0.000210, ph:2.30, baseOpacity:0.60, gas:'O' },
+  // Warm red — high altitude oxygen
+  { r:255, g:60,  b:80,   rx:110, ry:80,  ox:80,   oy:60,   spd:0.000350, ph:0.80, baseOpacity:0.30, gas:'O' },
+  // Electric blue — nitrogen
+  { r:40,  g:120, b:255,  rx:150, ry:100, ox:-50,  oy:-60,  spd:0.000290, ph:3.50, baseOpacity:0.55, gas:'N' },
+  // Deep magenta — nitrogen outer wisp
+  { r:180, g:0,   b:255,  rx:130, ry:90,  ox:90,   oy:-20,  spd:0.000240, ph:1.80, baseOpacity:0.40, gas:'N' },
+  // Violet fringe
+  { r:120, g:40,  b:255,  rx:100, ry:70,  ox:-80,  oy:50,   spd:0.000310, ph:2.90, baseOpacity:0.30, gas:'N' },
+];
+
+// ── draw aurora orb ───────────────────────────────────────
+function drawAurora(t) {
+  const sol    = live.solar / 5;
+  const latF   = Math.max(0, Math.min(1, (live.latitude - 40) / 45));
+  const intens = sol * latF;
+  if (intens < 0.02) return;
+
+  // Global breath pulse (4-second cycle)
+  const breath = 0.80 + 0.20 * Math.sin(t * 0.000785 * 2); // ~4s period
+
+  const { cx, cy } = orbCenter(t);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  for (const bd of BLOB_DEFS) {
+    const gasScale = bd.gas === 'O' ? live.oxygen : live.nitrogen;
+    const eff = bd.baseOpacity * gasScale * intens * breath;
+    if (eff < 0.01) continue;
+
+    // Local blob drift within orb
+    const localX = cx + bd.ox * Math.sin(t * bd.spd + bd.ph);
+    const localY = cy + bd.oy * Math.cos(t * bd.spd + bd.ph);
+
+    // Scale radii slightly with altitude
+    const altScale = 0.85 + live.altitude * 0.30;
+    const rx = bd.rx * altScale;
+    const ry = bd.ry * altScale;
+
+    // Draw as radial gradient ellipse with heavy blur
+    ctx.save();
+    ctx.filter = 'blur(55px)';
+    ctx.globalAlpha = eff;
+
+    // Scale ctx to turn circle gradient into ellipse
+    ctx.translate(localX, localY);
+    ctx.scale(1, ry / rx);
+    ctx.translate(-localX, -localY);
+
+    const grad = ctx.createRadialGradient(localX, localY, 0, localX, localY, rx);
+    grad.addColorStop(0,   `rgba(${bd.r},${bd.g},${bd.b},1)`);
+    grad.addColorStop(0.45,`rgba(${bd.r},${bd.g},${bd.b},0.65)`);
+    grad.addColorStop(0.75,`rgba(${bd.r},${bd.g},${bd.b},0.20)`);
+    grad.addColorStop(1,   `rgba(${bd.r},${bd.g},${bd.b},0)`);
+
+    ctx.beginPath();
+    ctx.arc(localX, localY, rx, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.restore();
+
+    // Second tighter pass for inner brightness
+    ctx.save();
+    ctx.filter = 'blur(20px)';
+    ctx.globalAlpha = eff * 0.55;
+    ctx.translate(localX, localY);
+    ctx.scale(1, ry / rx);
+    ctx.translate(-localX, -localY);
+    const grad2 = ctx.createRadialGradient(localX, localY, 0, localX, localY, rx * 0.5);
+    grad2.addColorStop(0,   `rgba(${bd.r},${bd.g},${bd.b},1)`);
+    grad2.addColorStop(0.6, `rgba(${bd.r},${bd.g},${bd.b},0.4)`);
+    grad2.addColorStop(1,   `rgba(${bd.r},${bd.g},${bd.b},0)`);
+    ctx.beginPath();
+    ctx.arc(localX, localY, rx * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = grad2;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+// ── main loop ─────────────────────────────────────────────
+function loop(ms) {
+  lerpParams();
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, W, H);
+  drawStars(ms);
+  drawAurora(ms);
+  requestAnimationFrame(loop);
+}
+
+resize();
+requestAnimationFrame(loop);
+
+// ── science & names ───────────────────────────────────────
 const solarLabels = ['','Quiet','Mild','Active','Strong!','EXTREME!'];
 const scienceTips = [
   'Green aurora: oxygen atoms at ~150 km — the most common aurora color.',
   'Red aurora: oxygen atoms at ~300 km — needs a strong solar storm.',
   'Blue & purple: nitrogen molecules at ~100 km altitude.',
   'Aurora forms when solar wind particles follow Earth\'s magnetic field lines to the poles.',
-  'Kp 5+ means the aurora may be visible from mid-latitudes!',
+  'Kp 5+ means aurora may be visible from mid-latitudes!',
   'The further north you are, the more often you can see the aurora.',
   'Solar flares and coronal mass ejections (CMEs) create the most vivid displays.',
-  'At very high altitudes, rare red auroras can appear at the very top of the curtain.',
+  'At high altitude, rare red auroras appear at the very top of the curtain.',
+  'Earth\'s magnetic field funnels charged particles toward the poles.',
+  'The solar cycle is 11 years long, but scientists still don\'t fully understand why.',
 ];
 
 function makeAuroraName(o, n, sol) {
   const G = ['Emerald','Jade','Verdant','Viridian'];
   const P = ['Amethyst','Violet','Indigo','Cosmic'];
-  const R = ['Crimson','Scarlet','Carmine'];
+  const R = ['Crimson','Scarlet','Carmine','Ruby'];
   const M = ['Polar','Boreal','Celestial','Solar','Arctic'];
-  const N = ['Cascade','Symphony','Veil','Curtain','Dreamscape','Tapestry','Wave'];
+  const N = ['Cascade','Symphony','Veil','Curtain','Dreamscape','Tapestry','Wave','Ribbon'];
   const A = ['Grand','Radiant','Blazing','Gentle','Quiet','Vivid','Wild','Ethereal'];
-  let color = o>0.70 && n<0.35 ? G[Math.random()*G.length|0]
+  const col = o>0.70 && n<0.35 ? G[Math.random()*G.length|0]
             : n>0.65 && o<0.40 ? P[Math.random()*P.length|0]
-            : o>0.55 && sol>=4 ? R[Math.random()*R.length|0]
+            : o>0.55 && sol>=4  ? R[Math.random()*R.length|0]
             : M[Math.random()*M.length|0];
-  return `The ${A[Math.random()*A.length|0]} ${color} ${N[Math.random()*N.length|0]}`;
+  return `The ${A[Math.random()*A.length|0]} ${col} ${N[Math.random()*N.length|0]}`;
 }
 
-// ═══════════════════════════════════════════════════════════
-//  CANVAS AURORA — requestAnimationFrame
-// ═══════════════════════════════════════════════════════════
-{
-  const canvas = document.getElementById('aurora-canvas');
-  const ctx    = canvas.getContext('2d');
-  let W, H;
-
-  // ── Resize: match canvas pixels to viewport ─────────────
-  function resizeCanvas() {
-    W = canvas.width  = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-    spawnStars();
-  }
-  window.addEventListener('resize', resizeCanvas);
-
-  // ── Stars: static tiny dots, re-seeded on resize ────────
-  let stars = [];
-  function spawnStars() {
-    stars = [];
-    for (let i = 0; i < 190; i++) {
-      stars.push({
-        x: Math.random() * W,
-        y: Math.random() * H * 0.88,
-        r: Math.random() * 0.5 + 0.3,
-        a: (Math.random() * 0.40 + 0.35).toFixed(3),
-      });
-    }
-  }
-
-  function drawStars() {
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 1;
-    for (const s of stars) {
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,255,${s.a})`;
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  // ── Band definitions ─────────────────────────────────────
-  // Each band is a long horizontal bezier ribbon spanning full width.
-  //
-  // baseY    : resting Y as fraction of H (0 = top of screen)
-  // baseAmp  : wave amplitude as fraction of H
-  // color    : CSS hex color
-  // opacity  : base opacity scaled by live recipe params
-  // sw       : stroke width (px) — the ribbon thickness
-  // blur     : blur radius (px) applied to the glow pass
-  // speed    : oscillation rate (rad/ms) → period = 2π/speed
-  //            ~0.00070 → 9 sec period, ~0.00105 → 6 sec period
-  // phase    : initial phase so bands start offset from each other
-  // waveFreq : phase step between adjacent control points
-  //            1.5–1.7 ≈ 2–3 full wavelengths visible across screen
-  // gas      : 'O' scales with oxygen slider, 'N' with nitrogen
-
-  const BAND_DEFS = [
-    // Faint teal upper wash — high-altitude diffuse glow
-    { baseY:0.09, baseAmp:0.038, color:'#00ffcc', opacity:0.30, sw:26, blur:28, speed:0.000630, phase:0.00, waveFreq:1.35, gas:'O' },
-    // Magenta/crimson crown — very high altitude, needs strong storm
-    { baseY:0.15, baseAmp:0.044, color:'#ff55bb', opacity:0.22, sw:20, blur:22, speed:0.000524, phase:2.65, waveFreq:1.18, gas:'O' },
-    // Yellow-green upper fringe
-    { baseY:0.22, baseAmp:0.052, color:'#88ff44', opacity:0.52, sw:36, blur:28, speed:0.000720, phase:1.10, waveFreq:1.52, gas:'O' },
-    // ── PRIMARY vivid emerald green — the iconic aurora curtain ──
-    { baseY:0.31, baseAmp:0.072, color:'#00ff66', opacity:0.90, sw:70, blur:38, speed:0.000800, phase:0.40, waveFreq:1.65, gas:'O' },
-    // Secondary green body — fills out the main curtain volume
-    { baseY:0.42, baseAmp:0.064, color:'#00dd44', opacity:0.75, sw:58, blur:30, speed:0.000680, phase:2.95, waveFreq:1.48, gas:'O' },
-    // Teal/cyan ribbon — O/N boundary (wide horizontal band, Image 2)
-    { baseY:0.52, baseAmp:0.055, color:'#00ffcc', opacity:0.55, sw:46, blur:25, speed:0.000600, phase:1.82, waveFreq:1.32, gas:'N' },
-    // Electric blue — nitrogen lower curtain
-    { baseY:0.60, baseAmp:0.046, color:'#44aaff', opacity:0.38, sw:34, blur:20, speed:0.000520, phase:0.88, waveFreq:1.22, gas:'N' },
-    // Deep violet hem — N ions at very low altitude
-    { baseY:0.67, baseAmp:0.038, color:'#8855ff', opacity:0.26, sw:24, blur:16, speed:0.000440, phase:2.15, waveFreq:1.12, gas:'N' },
-  ];
-
-  const N_PTS = 12; // control points across width
-
-  // ── Utilities ────────────────────────────────────────────
-  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
-
-  function hexRGB(hex) {
-    const n = parseInt(hex.replace('#', ''), 16);
-    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
-  }
-
-  function lerpParams() {
-    for (const k in live) live[k] += (target[k] - live[k]) * 0.016;
-  }
-
-  // ── Catmull-Rom spline through pts ───────────────────────
-  // Call beginPath() before this, then stroke()/fill() after.
-  function catmullRom(pts) {
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = pts[Math.max(i - 1, 0)];
-      const p1 = pts[i];
-      const p2 = pts[i + 1];
-      const p3 = pts[Math.min(i + 2, pts.length - 1)];
-      const t  = 0.45;
-      const cp1x = p1.x + (p2.x - p0.x) * t / 3;
-      const cp1y = p1.y + (p2.y - p0.y) * t / 3;
-      const cp2x = p2.x - (p3.x - p1.x) * t / 3;
-      const cp2y = p2.y - (p3.y - p1.y) * t / 3;
-      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
-    }
-  }
-
-  // ── Control-point array for one band at time ms ─────────
-  function bandPoints(bd, ms) {
-    // altitude slider shifts the whole stack up/down
-    const altShift = (live.altitude - 0.5) * -0.14;
-    const pts = [];
-    for (let i = 0; i <= N_PTS; i++) {
-      const x = (i / N_PTS) * W;
-      const φ = bd.phase + i * bd.waveFreq;
-      // Primary slow sine + organic secondary ripple
-      const yFrac = (bd.baseY + altShift)
-                  + bd.baseAmp * Math.sin(ms * bd.speed + φ)
-                  + bd.baseAmp * 0.28 * Math.sin(ms * bd.speed * 1.76 + φ * 1.42 + 0.65);
-      // Clamp so bands never leave viewport
-      pts.push({ x, y: clamp(yFrac * H, 1, H - 1) });
-    }
-    return pts;
-  }
-
-  // ── Render one aurora band ───────────────────────────────
-  function drawBand(bd, ms) {
-    const sol   = live.solar / 5;
-    const latF  = clamp((live.latitude - 40) / 45, 0, 1);
-    const gas   = bd.gas === 'O' ? live.oxygen : live.nitrogen;
-    const intens = sol * latF;
-    if (intens < 0.05 || gas < 0.04) return;
-
-    const eff = clamp(bd.opacity * gas * intens * 1.75, 0, 1);
-    if (eff < 0.02) return;
-
-    const pts = bandPoints(bd, ms);
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.lineCap  = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = bd.color;
-
-    // Pass 1 — wide gaussian-blurred glow (ctx.filter for soft diffuse edge)
-    ctx.filter      = `blur(${bd.blur}px)`;
-    ctx.lineWidth   = bd.sw * 1.8;
-    ctx.globalAlpha = eff * 0.38;
-    ctx.beginPath(); catmullRom(pts); ctx.stroke();
-
-    // Pass 2 — medium body (lighter blur)
-    ctx.filter      = `blur(${Math.max(2, bd.blur * 0.30) | 0}px)`;
-    ctx.lineWidth   = bd.sw;
-    ctx.globalAlpha = eff * 0.60;
-    ctx.beginPath(); catmullRom(pts); ctx.stroke();
-
-    // Pass 3 — sharp bright core
-    ctx.filter      = 'blur(2px)';
-    ctx.lineWidth   = bd.sw * 0.18;
-    ctx.globalAlpha = eff * 0.92;
-    ctx.beginPath(); catmullRom(pts); ctx.stroke();
-
-    ctx.filter = 'none';
-    ctx.restore();
-
-    drawRays(bd, pts, eff, ms);
-  }
-
-  // ── Vertical ray fringes hanging downward from each band ─
-  function drawRays(bd, pts, eff, ms) {
-    const spacing = 58;
-    const n       = Math.ceil(W / spacing) + 1;
-    const rgb     = hexRGB(bd.color);
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.lineCap = 'round';
-
-    for (let i = 0; i < n; i++) {
-      const rx = i * spacing;
-      // Gentle sway so rays aren't perfectly vertical
-      const sway = 5 * Math.sin(ms * 0.00038 + i * 0.94);
-
-      // Interpolate Y along the smooth band at this x position
-      const tPos = clamp(rx / W, 0, 1);
-      const si   = Math.min(Math.floor(tPos * N_PTS), N_PTS - 1);
-      const sf   = tPos * N_PTS - si;
-      const ry   = pts[si].y + (si + 1 < pts.length ? (pts[si + 1].y - pts[si].y) * sf : 0);
-
-      // Ray length and opacity pulse gently over time
-      const rayLen  = 80 + 55 * Math.abs(Math.sin(ms * 0.00026 + i * 1.32));
-      const rOpacity = eff * (0.22 + 0.18 * Math.abs(Math.sin(ms * 0.00032 + i * 0.78)));
-
-      // Gradient: band color at root → transparent at tip
-      const grad = ctx.createLinearGradient(rx + sway, ry, rx + sway, ry + rayLen);
-      grad.addColorStop(0,    `rgba(${rgb},${clamp(rOpacity,        0, 1).toFixed(3)})`);
-      grad.addColorStop(0.55, `rgba(${rgb},${clamp(rOpacity * 0.38, 0, 1).toFixed(3)})`);
-      grad.addColorStop(1,    `rgba(${rgb},0)`);
-
-      ctx.beginPath();
-      ctx.moveTo(rx + sway, ry);
-      ctx.lineTo(rx + sway, ry + rayLen);
-      ctx.strokeStyle = grad;
-      ctx.lineWidth   = 1.0 + 0.9 * Math.abs(Math.sin(i * 1.8));
-      ctx.globalAlpha = 1;
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
-  // ── Main animation loop ──────────────────────────────────
-  function loop(ms) {
-    lerpParams();
-
-    // Solid black background
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, W, H);
-
-    drawStars();
-
-    for (const bd of BAND_DEFS) drawBand(bd, ms);
-
-    requestAnimationFrame(loop);
-  }
-
-  // Kick off
-  resizeCanvas();
-  requestAnimationFrame(loop);
-}
-
-// ── UI: solar buttons ──────────────────────────────────────
+// ── UI: solar buttons ─────────────────────────────────────
 let solarLevel = 1;
 const solBtns      = document.querySelectorAll('.sol-btn');
 const solarLabelEl = document.getElementById('solar-label');
-
 solBtns.forEach(btn => btn.addEventListener('click', () => {
   solarLevel = parseInt(btn.dataset.lv);
   solBtns.forEach(b => b.classList.toggle('lit', parseInt(b.dataset.lv) <= solarLevel));
@@ -573,21 +349,19 @@ solBtns.forEach(btn => btn.addEventListener('click', () => {
   target.solar = solarLevel;
 }));
 
-// ── UI: sliders (live feedback) ────────────────────────────
+// ── UI: sliders ───────────────────────────────────────────
 [
-  { id:'sl-oxygen',   valId:'val-oxygen',   fmt:v=>Math.round(v)+'%',           key:'oxygen',   scale:v=>v/100 },
-  { id:'sl-nitrogen', valId:'val-nitrogen', fmt:v=>Math.round(v)+'%',           key:'nitrogen', scale:v=>v/100 },
-  { id:'sl-latitude', valId:'val-latitude', fmt:v=>Math.round(v)+'°N',          key:'latitude', scale:v=>parseFloat(v) },
-  { id:'sl-altitude', valId:'val-altitude', fmt:v=>(v>75?'High (~280km)':v>45?'Mid (~150km)':'Low (~100km)'), key:'altitude', scale:v=>v/100 },
+  { id:'sl-oxygen',   valId:'val-oxygen',   fmt:v=>Math.round(v)+'%',  key:'oxygen',   scale:v=>v/100 },
+  { id:'sl-nitrogen', valId:'val-nitrogen', fmt:v=>Math.round(v)+'%',  key:'nitrogen', scale:v=>v/100 },
+  { id:'sl-latitude', valId:'val-latitude', fmt:v=>Math.round(v)+'°N', key:'latitude', scale:v=>parseFloat(v) },
+  { id:'sl-altitude', valId:'val-altitude', fmt:v=>v>75?'High (~280km)':v>45?'Mid (~150km)':'Low (~100km)', key:'altitude', scale:v=>v/100 },
 ].forEach(({ id, valId, fmt, key, scale }) => {
-  const sl = document.getElementById(id);
-  const vl = document.getElementById(valId);
+  const sl = document.getElementById(id), vl = document.getElementById(valId);
   const upd = () => { vl.textContent = fmt(sl.value); target[key] = scale(sl.value); };
-  sl.addEventListener('input', upd);
-  upd();
+  sl.addEventListener('input', upd); upd();
 });
 
-// ── UI: bake ───────────────────────────────────────────────
+// ── UI: bake ──────────────────────────────────────────────
 const flashEl = document.getElementById('flash');
 const nameEl  = document.getElementById('aurora-name');
 const tipEl   = document.getElementById('science-tip');
@@ -595,39 +369,33 @@ let ntTimer, tipTimer;
 
 document.getElementById('bake-btn').addEventListener('click', () => {
   target.solar = solarLevel;
-
   flashEl.classList.add('on');
   setTimeout(() => flashEl.classList.remove('on'), 160);
-
-  clearTimeout(ntTimer);
-  nameEl.classList.remove('show');
+  clearTimeout(ntTimer); nameEl.classList.remove('show');
   setTimeout(() => {
     nameEl.textContent = makeAuroraName(target.oxygen, target.nitrogen, target.solar);
     nameEl.classList.add('show');
     ntTimer = setTimeout(() => nameEl.classList.remove('show'), 7000);
   }, 200);
-
-  clearTimeout(tipTimer);
-  tipEl.classList.remove('show');
+  clearTimeout(tipTimer); tipEl.classList.remove('show');
   setTimeout(() => {
-    tipEl.textContent = scienceTips[Math.random() * scienceTips.length | 0];
+    tipEl.textContent = scienceTips[Math.random()*scienceTips.length|0];
     tipEl.classList.add('show');
     tipTimer = setTimeout(() => tipEl.classList.remove('show'), 9000);
   }, 550);
 });
 
-// ── UI: panel toggle ───────────────────────────────────────
+// ── UI: panel toggle ──────────────────────────────────────
 const panel  = document.getElementById('panel');
 const tabBtn = document.getElementById('tab');
 let panelOpen = false;
-
 tabBtn.addEventListener('click', () => {
   panelOpen = !panelOpen;
   panel.classList.toggle('open', panelOpen);
   tabBtn.textContent = panelOpen ? '▼ HIDE RECIPE' : '▲ RECIPE';
 });
 
-// ── UI: projection mode ────────────────────────────────────
+// ── UI: projection mode ───────────────────────────────────
 const projOverlay = document.getElementById('proj-overlay');
 document.getElementById('proj-btn').addEventListener('click', () => {
   panel.classList.remove('open'); panelOpen = false;
@@ -636,18 +404,13 @@ document.getElementById('proj-btn').addEventListener('click', () => {
   projOverlay.classList.add('active');
 });
 document.getElementById('proj-overlay-exit').addEventListener('click', exitProj);
-
 let lastTap = 0;
-document.getElementById('aurora-canvas').addEventListener('touchend', () => {
+canvas.addEventListener('touchend', () => {
   const now = Date.now();
   if (now - lastTap < 380 && projOverlay.classList.contains('active')) exitProj();
   lastTap = now;
 });
-
-function exitProj() {
-  projOverlay.classList.remove('active');
-  tabBtn.style.display = '';
-}
+function exitProj() { projOverlay.classList.remove('active'); tabBtn.style.display = ''; }
 </script>
 </body>
 </html>
