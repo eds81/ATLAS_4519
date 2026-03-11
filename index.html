@@ -177,37 +177,51 @@ function drawStars(t) {
   }
 }
 
-// ── orb wandering ─────────────────────────────────────────
-// Sum of slow sines → organic non-repeating drift
-const ORB_SINES = {
-  x: [
-    { A: 0.14, f: 0.000210, p: 0.00 },
-    { A: 0.08, f: 0.000134, p: 1.57 },
-    { A: 0.05, f: 0.000380, p: 0.88 },
-  ],
-  y: [
-    { A: 0.10, f: 0.000177, p: 0.70 },
-    { A: 0.06, f: 0.000260, p: 2.30 },
-    { A: 0.04, f: 0.000430, p: 1.20 },
-  ],
-};
+// ── per-aurora wandering paths (one per Kp level) ─────────
+// Each aurora has independent sine params + a screen region bias
+const AURORAS = [
+  { // Kp 1 — centre, lazy drift
+    bx:0.50, by:0.48,
+    sx:[{A:0.13,f:0.000210,p:0.00},{A:0.07,f:0.000134,p:1.57},{A:0.04,f:0.000380,p:0.88}],
+    sy:[{A:0.10,f:0.000177,p:0.70},{A:0.05,f:0.000260,p:2.30},{A:0.03,f:0.000430,p:1.20}],
+  },
+  { // Kp 2 — upper-left bias, different rhythm
+    bx:0.42, by:0.40,
+    sx:[{A:0.11,f:0.000290,p:2.10},{A:0.08,f:0.000175,p:0.55},{A:0.05,f:0.000450,p:3.80}],
+    sy:[{A:0.09,f:0.000220,p:1.40},{A:0.06,f:0.000310,p:0.30},{A:0.04,f:0.000510,p:2.70}],
+  },
+  { // Kp 3 — lower-right bias, faster
+    bx:0.58, by:0.56,
+    sx:[{A:0.12,f:0.000340,p:1.20},{A:0.07,f:0.000195,p:3.10},{A:0.05,f:0.000490,p:0.40}],
+    sy:[{A:0.08,f:0.000260,p:2.90},{A:0.06,f:0.000380,p:1.65},{A:0.04,f:0.000560,p:0.85}],
+  },
+  { // Kp 4 — upper-right, slow sweep
+    bx:0.60, by:0.38,
+    sx:[{A:0.10,f:0.000160,p:0.70},{A:0.09,f:0.000245,p:2.40},{A:0.05,f:0.000420,p:1.90}],
+    sy:[{A:0.11,f:0.000200,p:3.50},{A:0.05,f:0.000290,p:0.95},{A:0.04,f:0.000470,p:2.10}],
+  },
+  { // Kp 5 — lower-left, chaotic
+    bx:0.40, by:0.60,
+    sx:[{A:0.14,f:0.000390,p:1.80},{A:0.08,f:0.000218,p:4.20},{A:0.06,f:0.000530,p:0.10}],
+    sy:[{A:0.10,f:0.000310,p:0.60},{A:0.07,f:0.000410,p:3.00},{A:0.05,f:0.000600,p:1.50}],
+  },
+];
 
-function orbCenter(t) {
+function orbCenter(aur, t) {
   let dx = 0, dy = 0;
-  for (const s of ORB_SINES.x) dx += s.A * Math.sin(s.f * t + s.p);
-  for (const s of ORB_SINES.y) dy += s.A * Math.sin(s.f * t + s.p);
-  const cx = Math.max(0.30, Math.min(0.70, 0.50 + dx)) * W;
-  const cy = Math.max(0.30, Math.min(0.70, 0.50 + dy)) * H;
+  for (const s of aur.sx) dx += s.A * Math.sin(s.f * t + s.p);
+  for (const s of aur.sy) dy += s.A * Math.sin(s.f * t + s.p);
+  const cx = Math.max(0.28, Math.min(0.72, aur.bx + dx)) * W;
+  const cy = Math.max(0.28, Math.min(0.72, aur.by + dy)) * H;
   return { cx, cy };
 }
 
-// Analytical velocity (derivative of sum-of-sines) → gives movement direction
-function orbVelocity(t) {
+function orbVelocity(aur, t) {
   let vx = 0, vy = 0;
-  for (const s of ORB_SINES.x) vx += s.A * s.f * Math.cos(s.f * t + s.p) * W;
-  for (const s of ORB_SINES.y) vy += s.A * s.f * Math.cos(s.f * t + s.p) * H;
+  for (const s of aur.sx) vx += s.A * s.f * Math.cos(s.f * t + s.p) * W;
+  for (const s of aur.sy) vy += s.A * s.f * Math.cos(s.f * t + s.p) * H;
   const len = Math.sqrt(vx*vx + vy*vy) || 1;
-  return { vx: vx/len, vy: vy/len, speed: len };
+  return { vx: vx/len, vy: vy/len };
 }
 
 // ── blob definitions ──────────────────────────────────────
@@ -261,56 +275,51 @@ function drawBlob(x, y, rHead, rPerp, angle, r, g, b, eff, blurPx) {
   ctx.restore();
 }
 
-// ── draw aurora orb ───────────────────────────────────────
-function drawAurora(t) {
-  const solNorm = (live.solar - 1) / 4;            // 0 → 1 as Kp 1→5
-  const latF    = Math.max(0.10, Math.min(1, (live.latitude - 40) / 45));
-  // Base aurora always visible; solar & latitude multiply it upward
-  const intens  = (0.28 + solNorm * 0.72) * latF;
+// ── draw one aurora instance ──────────────────────────────
+function drawOneAurora(aur, t, intens, altScale) {
+  const breath = 0.82 + 0.18 * Math.sin(t * 0.001570 + aur.bx * 6); // each breathes at unique phase
+  const { cx, cy } = orbCenter(aur, t);
+  const { vx, vy } = orbVelocity(aur, t);
+  const angle = Math.atan2(vy, vx);
 
-  const breath   = 0.82 + 0.18 * Math.sin(t * 0.001570); // ~4s pulse
-  const { cx, cy } = orbCenter(t);
-  const { vx, vy } = orbVelocity(t);
-  const angle    = Math.atan2(vy, vx);
-  const altScale = 0.85 + live.altitude * 0.30;
-  // Higher solar = slightly larger orb
-  const solarSize = 0.85 + solNorm * 0.30;
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-
-  // ── tail: each segment unlocks at a higher Kp level ─────
-  // TAIL_DEFS[0] at Kp≥2, [1] at Kp≥3, [2] at Kp≥4, [3] at Kp≥5
-  for (let i = 0; i < TAIL_DEFS.length; i++) {
-    if (live.solar < i + 2) continue;              // gate by solar level
-    const td = TAIL_DEFS[i];
+  // Tail (always present per-aurora, scaled by intens)
+  for (const td of TAIL_DEFS) {
     const gasScale = td.gas === 'O' ? live.oxygen : live.nitrogen;
     const eff = td.opacity * gasScale * intens * breath;
     const tx = cx - vx * td.dist;
     const ty = cy - vy * td.dist;
-    drawBlob(tx, ty, td.rHead * altScale * solarSize, td.rPerp * altScale * solarSize,
-             angle, td.r, td.g, td.b, eff, td.blur);
+    drawBlob(tx, ty, td.rHead * altScale, td.rPerp * altScale, angle, td.r, td.g, td.b, eff, td.blur);
   }
 
-  // ── main body blobs ─────────────────────────────────────
+  // Body blobs
   for (const bd of BLOB_DEFS) {
-    // Oxygen drives green & red; nitrogen drives blue & purple
     const gasScale = bd.gas === 'O' ? live.oxygen : live.nitrogen;
     const eff = bd.baseOpacity * gasScale * intens * breath;
     if (eff < 0.01) continue;
-
-    const driftAlong = bd.ox * Math.sin(t * bd.spd + bd.ph);
-    const driftPerp  = bd.oy * Math.cos(t * bd.spd + bd.ph);
+    const driftAlong = bd.ox * Math.sin(t * bd.spd + bd.ph + aur.bx * 5);
+    const driftPerp  = bd.oy * Math.cos(t * bd.spd + bd.ph + aur.by * 5);
     const localX = cx + vx * driftAlong - vy * driftPerp;
     const localY = cy + vy * driftAlong + vx * driftPerp;
-
-    const rH = bd.rHead * altScale * solarSize;
-    const rP = bd.rPerp  * altScale * solarSize;
-
+    const rH = bd.rHead * altScale;
+    const rP = bd.rPerp  * altScale;
     drawBlob(localX, localY, rH,        rP,        angle, bd.r, bd.g, bd.b, eff * 0.45, 55);
     drawBlob(localX, localY, rH * 0.48, rP * 0.48, angle, bd.r, bd.g, bd.b, eff * 0.82, 18);
   }
+}
 
+// ── draw all active auroras ───────────────────────────────
+function drawAurora(t) {
+  const solNorm  = (live.solar - 1) / 4;
+  const latF     = Math.max(0.10, Math.min(1, (live.latitude - 40) / 45));
+  const intens   = (0.28 + solNorm * 0.72) * latF;
+  const altScale = 0.85 + live.altitude * 0.30;
+  const count    = Math.round(live.solar); // 1 aurora at Kp1, up to 5 at Kp5
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  for (let i = 0; i < count; i++) {
+    drawOneAurora(AURORAS[i], t, intens, altScale);
+  }
   ctx.restore();
 }
 
