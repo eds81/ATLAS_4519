@@ -179,31 +179,33 @@ function drawStars(t) {
 
 // ── per-aurora wandering paths (one per Kp level) ─────────
 // Each aurora has independent sine params + a screen region bias
+// smoothAngle: smoothly interpolated facing direction (updated each frame)
+// sizePhaseA/B: two independent size-breath sine params per aurora
 const AURORAS = [
-  { // Kp 1 — centre, lazy drift
-    bx:0.50, by:0.48,
-    sx:[{A:0.13,f:0.000210,p:0.00},{A:0.07,f:0.000134,p:1.57},{A:0.04,f:0.000380,p:0.88}],
-    sy:[{A:0.10,f:0.000177,p:0.70},{A:0.05,f:0.000260,p:2.30},{A:0.03,f:0.000430,p:1.20}],
+  { bx:0.50, by:0.48, smoothAngle:0,
+    sx:[{A:0.18,f:0.000210,p:0.00},{A:0.10,f:0.000134,p:1.57},{A:0.06,f:0.000380,p:0.88},{A:0.04,f:0.000090,p:2.40}],
+    sy:[{A:0.15,f:0.000177,p:0.70},{A:0.08,f:0.000260,p:2.30},{A:0.05,f:0.000430,p:1.20},{A:0.03,f:0.000110,p:0.50}],
+    szA:{f:0.000720,p:0.00}, szB:{f:0.000440,p:1.80},
   },
-  { // Kp 2 — upper-left bias, different rhythm
-    bx:0.42, by:0.40,
-    sx:[{A:0.11,f:0.000290,p:2.10},{A:0.08,f:0.000175,p:0.55},{A:0.05,f:0.000450,p:3.80}],
-    sy:[{A:0.09,f:0.000220,p:1.40},{A:0.06,f:0.000310,p:0.30},{A:0.04,f:0.000510,p:2.70}],
+  { bx:0.42, by:0.40, smoothAngle:0,
+    sx:[{A:0.17,f:0.000290,p:2.10},{A:0.11,f:0.000175,p:0.55},{A:0.06,f:0.000450,p:3.80},{A:0.04,f:0.000100,p:1.20}],
+    sy:[{A:0.14,f:0.000220,p:1.40},{A:0.09,f:0.000310,p:0.30},{A:0.05,f:0.000510,p:2.70},{A:0.03,f:0.000080,p:3.10}],
+    szA:{f:0.000610,p:2.50}, szB:{f:0.000390,p:0.40},
   },
-  { // Kp 3 — lower-right bias, faster
-    bx:0.58, by:0.56,
-    sx:[{A:0.12,f:0.000340,p:1.20},{A:0.07,f:0.000195,p:3.10},{A:0.05,f:0.000490,p:0.40}],
-    sy:[{A:0.08,f:0.000260,p:2.90},{A:0.06,f:0.000380,p:1.65},{A:0.04,f:0.000560,p:0.85}],
+  { bx:0.58, by:0.56, smoothAngle:0,
+    sx:[{A:0.19,f:0.000340,p:1.20},{A:0.10,f:0.000195,p:3.10},{A:0.06,f:0.000490,p:0.40},{A:0.04,f:0.000120,p:2.00}],
+    sy:[{A:0.13,f:0.000260,p:2.90},{A:0.09,f:0.000380,p:1.65},{A:0.06,f:0.000560,p:0.85},{A:0.04,f:0.000095,p:1.50}],
+    szA:{f:0.000850,p:1.10}, szB:{f:0.000520,p:3.20},
   },
-  { // Kp 4 — upper-right, slow sweep
-    bx:0.60, by:0.38,
-    sx:[{A:0.10,f:0.000160,p:0.70},{A:0.09,f:0.000245,p:2.40},{A:0.05,f:0.000420,p:1.90}],
-    sy:[{A:0.11,f:0.000200,p:3.50},{A:0.05,f:0.000290,p:0.95},{A:0.04,f:0.000470,p:2.10}],
+  { bx:0.60, by:0.38, smoothAngle:0,
+    sx:[{A:0.16,f:0.000160,p:0.70},{A:0.12,f:0.000245,p:2.40},{A:0.06,f:0.000420,p:1.90},{A:0.04,f:0.000105,p:0.80}],
+    sy:[{A:0.16,f:0.000200,p:3.50},{A:0.08,f:0.000290,p:0.95},{A:0.05,f:0.000470,p:2.10},{A:0.03,f:0.000085,p:2.70}],
+    szA:{f:0.000550,p:0.70}, szB:{f:0.000330,p:1.60},
   },
-  { // Kp 5 — lower-left, chaotic
-    bx:0.40, by:0.60,
-    sx:[{A:0.14,f:0.000390,p:1.80},{A:0.08,f:0.000218,p:4.20},{A:0.06,f:0.000530,p:0.10}],
-    sy:[{A:0.10,f:0.000310,p:0.60},{A:0.07,f:0.000410,p:3.00},{A:0.05,f:0.000600,p:1.50}],
+  { bx:0.40, by:0.60, smoothAngle:0,
+    sx:[{A:0.20,f:0.000390,p:1.80},{A:0.12,f:0.000218,p:4.20},{A:0.07,f:0.000530,p:0.10},{A:0.05,f:0.000130,p:3.00}],
+    sy:[{A:0.15,f:0.000310,p:0.60},{A:0.10,f:0.000410,p:3.00},{A:0.06,f:0.000600,p:1.50},{A:0.04,f:0.000115,p:0.30}],
+    szA:{f:0.000940,p:3.40}, szB:{f:0.000580,p:0.90},
   },
 ];
 
@@ -211,8 +213,11 @@ function orbCenter(aur, t) {
   let dx = 0, dy = 0;
   for (const s of aur.sx) dx += s.A * Math.sin(s.f * t + s.p);
   for (const s of aur.sy) dy += s.A * Math.sin(s.f * t + s.p);
-  const cx = Math.max(0.28, Math.min(0.72, aur.bx + dx)) * W;
-  const cy = Math.max(0.28, Math.min(0.72, aur.by + dy)) * H;
+  // Soft boundary: use tanh to gently curve back instead of hard clamping
+  const raw_cx = aur.bx + dx;
+  const raw_cy = aur.by + dy;
+  const cx = (0.50 + 0.22 * Math.tanh((raw_cx - 0.50) / 0.18)) * W;
+  const cy = (0.50 + 0.22 * Math.tanh((raw_cy - 0.50) / 0.18)) * H;
   return { cx, cy };
 }
 
@@ -229,22 +234,14 @@ function orbVelocity(aur, t) {
 // ox/oy = local drift offset (in the orb's rotated frame)
 // flickF/flickP — each blob has its own slow flicker so color distribution is random-feeling
 const BLOB_DEFS = [
-  // Core bright green — oxygen dominant
-  { r:0,   g:255, b:102,  rHead:260, rPerp:110, ox:0,    oy:0,    spd:0.000320, ph:0.00, baseOpacity:0.90, gas:'O', flickF:0.000480, flickP:0.00 },
-  // Secondary vivid green
-  { r:30,  g:255, b:80,   rHead:200, rPerp:85,  ox:50,   oy:-35,  spd:0.000270, ph:1.10, baseOpacity:0.75, gas:'O', flickF:0.000370, flickP:2.10 },
-  // Teal/cyan mid layer
-  { r:0,   g:255, b:200,  rHead:220, rPerp:90,  ox:-60,  oy:25,   spd:0.000210, ph:2.30, baseOpacity:0.60, gas:'O', flickF:0.000290, flickP:1.40 },
-  // Warm red — high altitude oxygen
-  { r:255, g:60,  b:80,   rHead:150, rPerp:65,  ox:70,   oy:50,   spd:0.000350, ph:0.80, baseOpacity:0.32, gas:'O', flickF:0.000610, flickP:3.80 },
-  // Electric blue — nitrogen (boosted)
-  { r:40,  g:100, b:255,  rHead:210, rPerp:85,  ox:-40,  oy:-50,  spd:0.000290, ph:3.50, baseOpacity:0.82, gas:'N', flickF:0.000540, flickP:0.70 },
-  // Deep magenta — nitrogen (boosted)
-  { r:200, g:0,   b:255,  rHead:190, rPerp:78,  ox:80,   oy:-15,  spd:0.000240, ph:1.80, baseOpacity:0.72, gas:'N', flickF:0.000430, flickP:2.50 },
-  // Violet fringe — nitrogen (boosted)
-  { r:140, g:30,  b:255,  rHead:160, rPerp:65,  ox:-70,  oy:45,   spd:0.000310, ph:2.90, baseOpacity:0.65, gas:'N', flickF:0.000350, flickP:1.20 },
-  // Soft lavender edge — adds variation
-  { r:180, g:80,  b:255,  rHead:130, rPerp:52,  ox:30,   oy:-70,  spd:0.000260, ph:4.10, baseOpacity:0.55, gas:'N', flickF:0.000620, flickP:3.30 },
+  { r:0,   g:255, b:102,  rHead:270, rPerp:115, ox:0,    oy:0,    spd:0.000320, ph:0.00, baseOpacity:0.90, gas:'O', flickF:0.000480, flickP:0.00 },
+  { r:30,  g:255, b:80,   rHead:210, rPerp:88,  ox:90,   oy:-55,  spd:0.000270, ph:1.10, baseOpacity:0.75, gas:'O', flickF:0.000370, flickP:2.10 },
+  { r:0,   g:255, b:200,  rHead:230, rPerp:95,  ox:-100, oy:40,   spd:0.000210, ph:2.30, baseOpacity:0.60, gas:'O', flickF:0.000290, flickP:1.40 },
+  { r:255, g:60,  b:80,   rHead:155, rPerp:68,  ox:110,  oy:75,   spd:0.000350, ph:0.80, baseOpacity:0.32, gas:'O', flickF:0.000610, flickP:3.80 },
+  { r:40,  g:100, b:255,  rHead:215, rPerp:88,  ox:-80,  oy:-80,  spd:0.000290, ph:3.50, baseOpacity:0.82, gas:'N', flickF:0.000540, flickP:0.70 },
+  { r:200, g:0,   b:255,  rHead:195, rPerp:80,  ox:120,  oy:-25,  spd:0.000240, ph:1.80, baseOpacity:0.72, gas:'N', flickF:0.000430, flickP:2.50 },
+  { r:140, g:30,  b:255,  rHead:165, rPerp:68,  ox:-110, oy:70,   spd:0.000310, ph:2.90, baseOpacity:0.65, gas:'N', flickF:0.000350, flickP:1.20 },
+  { r:180, g:80,  b:255,  rHead:135, rPerp:55,  ox:50,   oy:-100, spd:0.000260, ph:4.10, baseOpacity:0.55, gas:'N', flickF:0.000620, flickP:3.30 },
 ];
 
 // Tail segments — each has perpendicular wave params for organic flutter
@@ -281,32 +278,42 @@ function drawBlob(x, y, rHead, rPerp, angle, r, g, b, eff, blurPx) {
 
 // ── draw one aurora instance ──────────────────────────────
 function drawOneAurora(aur, t, intens, altScale) {
-  const breath = 0.82 + 0.18 * Math.sin(t * 0.001570 + aur.bx * 6); // each breathes at unique phase
+  const breath = 0.82 + 0.18 * Math.sin(t * 0.001570 + aur.bx * 6);
   const { cx, cy } = orbCenter(aur, t);
   const { vx, vy } = orbVelocity(aur, t);
-  const angle = Math.atan2(vy, vx);
+
+  // Smooth rotation: lerp toward velocity angle to avoid snapping
+  const targetAngle = Math.atan2(vy, vx);
+  let da = targetAngle - aur.smoothAngle;
+  if (da >  Math.PI) da -= Math.PI * 2;
+  if (da < -Math.PI) da += Math.PI * 2;
+  aur.smoothAngle += da * 0.018;         // slow lerp — feels like the shape turns lazily
+  const angle = aur.smoothAngle;
+
+  // Size breathing: two slow sines at unique frequencies per aurora
+  // Makes the orb visibly expand and contract over time
+  const sizePulse = 1.0
+    + 0.28 * Math.sin(t * aur.szA.f + aur.szA.p)
+    + 0.14 * Math.sin(t * aur.szB.f + aur.szB.p);
+  const dynScale = altScale * Math.max(0.55, sizePulse);
 
   // Tail — perpendicular (px, py) is the axis 90° to movement
-  const px = -vy, py = vx; // unit vector perpendicular to velocity
+  const px = -vy, py = vx;
   for (const td of TAIL_DEFS) {
     const gasScale = td.gas === 'O' ? live.oxygen : live.nitrogen;
     const eff = td.opacity * gasScale * intens * breath;
     if (eff < 0.005) continue;
-    // Lateral undulation: each segment sways sideways with its own wave
-    const sway = td.wA * Math.sin(t * td.wF + td.wP + aur.bx * 4.2);
-    // Secondary wobble at different frequency for non-repeating flutter
+    const sway  = td.wA * Math.sin(t * td.wF + td.wP + aur.bx * 4.2);
     const sway2 = td.wA * 0.38 * Math.sin(t * td.wF * 1.73 + td.wP + 1.1);
-    const tx = cx - vx * td.dist + px * (sway + sway2);
-    const ty = cy - vy * td.dist + py * (sway + sway2);
-    // Angle of the blob also tilts with the sway so it looks swept by wind
+    const tx = cx - vx * td.dist * sizePulse + px * (sway + sway2);
+    const ty = cy - vy * td.dist * sizePulse + py * (sway + sway2);
     const swayAngle = angle + (sway / td.dist) * 0.55;
-    drawBlob(tx, ty, td.rHead * altScale, td.rPerp * altScale, swayAngle, td.r, td.g, td.b, eff, td.blur);
+    drawBlob(tx, ty, td.rHead * dynScale, td.rPerp * dynScale, swayAngle, td.r, td.g, td.b, eff, td.blur);
   }
 
   // Body blobs — each flickers independently for organic colour variation
   for (const bd of BLOB_DEFS) {
     const gasScale = bd.gas === 'O' ? live.oxygen : live.nitrogen;
-    // Per-blob flicker: two layered sines with unique frequencies → non-repeating pulse
     const flicker = 0.45 + 0.35 * Math.sin(t * bd.flickF + bd.flickP + aur.bx * 7.3)
                          + 0.20 * Math.sin(t * bd.flickF * 1.61 + bd.flickP * 1.4 + 0.9);
     const eff = bd.baseOpacity * gasScale * intens * breath * Math.max(0, flicker);
@@ -315,8 +322,8 @@ function drawOneAurora(aur, t, intens, altScale) {
     const driftPerp  = bd.oy * Math.cos(t * bd.spd + bd.ph + aur.by * 5);
     const localX = cx + vx * driftAlong - vy * driftPerp;
     const localY = cy + vy * driftAlong + vx * driftPerp;
-    const rH = bd.rHead * altScale;
-    const rP = bd.rPerp  * altScale;
+    const rH = bd.rHead * dynScale;
+    const rP = bd.rPerp  * dynScale;
     drawBlob(localX, localY, rH,        rP,        angle, bd.r, bd.g, bd.b, eff * 0.45, 55);
     drawBlob(localX, localY, rH * 0.48, rP * 0.48, angle, bd.r, bd.g, bd.b, eff * 0.82, 18);
   }
