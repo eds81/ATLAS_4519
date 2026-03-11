@@ -367,7 +367,7 @@ const sketch = (p) => {
     t++;
   };
 
-  // Soft coloured halo around the cloud position
+  // Soft luminous halo — translucent light projected through fog
   function drawAmbientGlow() {
     let sol = live.solar / 5;
     let lat = p.map(live.latitude, 40, 85, 0.10, 1.0);
@@ -375,28 +375,38 @@ const sketch = (p) => {
     if (intensity < 0.04) return;
 
     let cx = cloudX + cloudW * 0.5;
-    let cy = cloudY + cloudH * 0.5;
-    let pulseT = p.sin(t * 0.012) * 0.5 + 0.5; // 0–1 slow pulse
+    let cy = cloudY + cloudH * 0.58; // slightly lower — aurora hangs from top
+    // Pulse in sync with the aurora body
+    let pulse = 0.72 + 0.28 * p.sin(t * 0.007 + p.sin(t * 0.003) * 2.0);
 
     p.noStroke();
     p.blendMode(p.ADD);
 
-    // Green halo
-    let gOx = live.oxygen * intensity;
-    for (let i = 9; i >= 1; i--) {
-      let r = i / 9;
-      let a = (1 - r) * gOx * (14 + pulseT * 4);
-      p.fill(122, 75, 90, a);
-      p.ellipse(cx, cy, cloudW * (1 + (1-r)*0.45), cloudH * (1 + (1-r)*0.45));
+    // Emerald green — dominant aurora halo
+    let gOx = live.oxygen * intensity * pulse;
+    for (let i = 10; i >= 1; i--) {
+      let r = i / 10;
+      let a = (1 - r) * (1 - r) * gOx * 18; // quadratic falloff = softer edge
+      p.fill(132, 80, 88, a);
+      p.ellipse(cx, cy, cloudW * (0.85 + (1-r)*0.55), cloudH * (0.8 + (1-r)*0.55));
     }
 
-    // Violet/blue halo
-    let bNi = live.nitrogen * intensity;
+    // Hot pink / magenta crown glow (high solar + oxygen)
+    let mMag = live.oxygen * intensity * pulse * (sol > 0.3 ? 1 : sol / 0.3);
+    for (let i = 8; i >= 1; i--) {
+      let r = i / 8;
+      let a = (1 - r) * (1 - r) * mMag * 9;
+      p.fill(328, 78, 90, a);
+      p.ellipse(cx, cy - cloudH * 0.15, cloudW * (0.7 + (1-r)*0.45), cloudH * (0.6 + (1-r)*0.4));
+    }
+
+    // Deep violet / blue — nitrogen halo
+    let bNi = live.nitrogen * intensity * pulse;
     for (let i = 9; i >= 1; i--) {
       let r = i / 9;
-      let a = (1 - r) * bNi * (11 + pulseT * 3);
-      p.fill(248, 75, 90, a);
-      p.ellipse(cx, cy, cloudW * (1 + (1-r)*0.40), cloudH * (1 + (1-r)*0.40));
+      let a = (1 - r) * (1 - r) * bNi * 13;
+      p.fill(268, 82, 88, a);
+      p.ellipse(cx, cy + cloudH * 0.05, cloudW * (0.75 + (1-r)*0.48), cloudH * (0.7 + (1-r)*0.48));
     }
 
     p.blendMode(p.BLEND);
@@ -411,28 +421,41 @@ const sketch = (p) => {
     let alt = live.altitude;
     let intensity = sol * lat;
 
+    // Slow organic pulse — the aurora "breathes"
+    let pulse = 0.72 + 0.28 * p.sin(t * 0.007 + p.sin(t * 0.003) * 2.0);
+
     buf.clear();
 
     if (intensity >= 0.03) {
-      let altShift = p.map(alt, 0, 1, 0.12, -0.05);
+      let altShift = p.map(alt, 0, 1, 0.13, -0.06);
 
       // [ hue, sat, bri, baseY(0–1), maxH(0–1), weight, noiseSpeed, noiseXScale ]
+      // Longer nxScale wavelengths = bigger curtain rolls, more silk-like sweep
       const bands = [
-        [355, 70, 90, 0.12+altShift, 0.09, ox*0.28*(sol>0.5?1:sol*2),     0.55, 0.0018],
-        [ 10, 63, 88, 0.18+altShift, 0.09, ox*0.40*(sol>0.35?1:sol*2.5),  0.62, 0.0022],
-        [ 92, 87, 98, 0.25+altShift, 0.12, ox*0.68,   0.78, 0.0020],
-        [122, 96,100, 0.33+altShift, 0.20, ox,         1.00, 0.0018],
-        [166, 86, 90, 0.47+altShift, 0.13, (ox*0.5+ni*0.6)*0.85, 0.88, 0.0025],
-        [214, 90, 92, 0.57+altShift, 0.12, ni,         0.92, 0.0022],
-        [268, 80, 86, 0.65+altShift, 0.10, ni*0.72,    0.78, 0.0026],
+        // Deep crimson wisps — very high altitude O, rarest (needs strong storm)
+        [  2, 82, 88, 0.10+altShift, 0.08, ox*0.22*(sol>0.55?1:sol*1.8), 0.48, 0.0010],
+        // Hot pink / magenta crown — high O+N mix, electric edge colour
+        [328, 80, 92, 0.17+altShift, 0.10, (ox*0.4+ni*0.25)*(sol>0.28?1:sol*2.4), 0.58, 0.0012],
+        // Yellow-green upper fringe
+        [ 88, 92, 98, 0.24+altShift, 0.11, ox*0.62, 0.72, 0.0011],
+        // ── VIVID EMERALD GREEN — the iconic aurora colour (O at ~150 km) ──
+        [132, 100,100, 0.32+altShift, 0.24, ox,      1.00, 0.0010],
+        // Bright lime secondary (green band width)
+        [118, 95, 98, 0.44+altShift, 0.12, ox*0.55, 0.80, 0.0013],
+        // Teal/cyan — O/N boundary curtain base
+        [174, 90, 90, 0.53+altShift, 0.11, (ox*0.45+ni*0.55)*0.82, 0.82, 0.0014],
+        // Electric blue — nitrogen lower curtain
+        [220, 95, 92, 0.62+altShift, 0.10, ni,      0.88, 0.0013],
+        // Deep violet — N ions at very low altitude, bottom hem of curtain
+        [278, 88, 88, 0.70+altShift, 0.09, ni*0.75, 0.72, 0.0015],
       ];
 
       buf.blendMode(p.ADD);
       buf.noStroke();
 
       for (let [h, s, b, by, mh, w, spd, nxs] of bands) {
-        let eff = w * intensity;
-        if (eff < 0.03) continue;
+        let eff = w * intensity * pulse;
+        if (eff < 0.028) continue;
         drawBand(h, s, b, by * cloudH, mh * cloudH, eff, spd, nxs);
       }
 
@@ -441,57 +464,120 @@ const sketch = (p) => {
 
     applyCloudMask();
 
-    // Subtle vertical float only (wide cloud shouldn't drift side-to-side)
-    let dy = Math.sin(t * 0.0014 + 1.2) * 3;
+    // Very subtle vertical float — like fabric swaying
+    let dy = Math.sin(t * 0.0013 + 1.2) * 4;
     p.image(buf, cloudX, cloudY + dy);
   }
 
   function drawBand(hue, sat, bri, baseY, maxH, weight, speed, nxScale) {
     const STEP = 5;
+
+    // Three passes: wide translucent glow → medium body → tight bright core
+    // Reduced sy values so bands stay within the cloud buffer vertically
     const passes = [
-      { sy: 2.0, sh: 1.6, af: 0.28 },
-      { sy: 1.0, sh: 1.0, af: 0.54 },
-      { sy: 0.44, sh: 0.52, af: 0.88 },
+      { sy: 1.6, sh: 1.3, af: 0.25 },
+      { sy: 0.85, sh: 0.90, af: 0.52 },
+      { sy: 0.36, sh: 0.45, af: 0.90 },
     ];
 
-    for (let pass of passes) {
-      let alpha = weight * 60 * pass.af;
-      buf.fill(hue, sat, bri, alpha);
-      buf.beginShape();
+    // Sweeping brightness ripple — wave of light moving across the curtain
+    let sweepSpeed = t * 0.0028;
+    let sweepWidth = cloudW * 0.28;
 
+    for (let pass of passes) {
+      buf.beginShape();
       let topPts = [];
+
       for (let x = -STEP * 2; x <= cloudW + STEP * 2; x += STEP) {
-        let n  = p.noise(x * nxScale,       t * speed * 0.001);
-        let n2 = p.noise(x * nxScale + 300, t * speed * 0.0008);
-        let y  = baseY
-               + (n  - 0.5) * maxH * 2.10 * pass.sy
-               + (n2 - 0.5) * maxH * 0.55 * pass.sy;
+        // Primary large roll (silk curtain sweep)
+        let n  = p.noise(x * nxScale,        t * speed * 0.001);
+        // Secondary ripple (smaller undulation on top of the big roll)
+        let n2 = p.noise(x * nxScale * 3.5 + 300, t * speed * 0.0012);
+        // Slow lateral drift of the whole band
+        let n3 = p.noise(x * nxScale * 0.4 + 900, t * speed * 0.0005);
+
+        let y = baseY
+              + (n  - 0.5) * maxH * 2.20 * pass.sy   // big roll
+              + (n2 - 0.5) * maxH * 0.45 * pass.sy   // ripple
+              + (n3 - 0.5) * maxH * 0.18;             // gentle drift (same for all passes)
         topPts.push([x, y]);
       }
 
-      for (let [x, y] of topPts) buf.curveVertex(x, y);
+      // Sweeping brightness modulation per vertex
+      for (let i = 0; i < topPts.length; i++) {
+        let [x, y] = topPts[i];
+        // Two overlapping sweep waves travelling in opposite directions
+        let sw  = Math.max(0, Math.sin((x / cloudW) * Math.PI * 2 - sweepSpeed));
+        let sw2 = Math.max(0, Math.sin((x / cloudW) * Math.PI * 1.3 + sweepSpeed * 0.7 + 1.0));
+        let sweepBoost = 1.0 + 0.40 * (sw * 0.6 + sw2 * 0.4);
+        let alpha = weight * 58 * pass.af * sweepBoost;
+        buf.fill(hue, sat, bri, alpha);
+        // We can't change fill mid-shape in p5, so accumulate via curveVertex only
+        buf.curveVertex(x, y);
+      }
 
+      // Bottom edge — slightly less wavy, gives the curtain a hem
       for (let i = topPts.length - 1; i >= 0; i--) {
         let [x, y] = topPts[i];
         let nb = p.noise(x * nxScale + 600, t * speed * 0.0007 + 40);
-        buf.curveVertex(x, y + maxH * pass.sh + (nb - 0.5) * maxH * 0.32);
+        buf.curveVertex(x, y + maxH * pass.sh + (nb - 0.5) * maxH * 0.28);
+      }
+      buf.endShape(p.CLOSE);
+
+      // Re-draw with uniform fill (fill mid-shape isn't possible; this pass uses one alpha)
+      // Use average sweep boost estimate × base alpha for the filled shape above
+      let avgAlpha = weight * 58 * pass.af * 1.18; // slightly boosted for vibrancy
+      buf.fill(hue, sat, bri, avgAlpha * 0.35);    // additive secondary pass at lower alpha
+      buf.beginShape();
+      for (let [x, y] of topPts) buf.curveVertex(x, y);
+      for (let i = topPts.length-1; i>=0; i--) {
+        let [x, y] = topPts[i];
+        let nb = p.noise(x * nxScale + 600, t * speed * 0.0007 + 40);
+        buf.curveVertex(x, y + maxH * pass.sh + (nb-0.5) * maxH * 0.28);
       }
       buf.endShape(p.CLOSE);
     }
 
-    // Vertical curtain striations
-    if (weight > 0.26) {
-      buf.strokeWeight(1.3);
-      for (let x = 0; x < cloudW; x += 7) {
-        let rn = p.noise(x * 0.011 + hue * 0.1, t * speed * 0.002);
-        if (rn > 0.61) {
-          let rayH = rn * maxH * weight * 0.82;
-          let yn   = p.noise(x * nxScale, t * speed * 0.001);
-          let ry   = baseY + (yn - 0.5) * maxH * 0.85;
-          let a    = weight * 40 * ((rn - 0.61) / 0.39);
-          buf.stroke(hue, sat * 0.4, 100, a);
-          buf.line(x, ry, x, ry - rayH);
-        }
+    // ── CURTAIN RAYS — vertical streaks radiating from the base arc ──
+    // Present on all non-trivial bands; intensity scales with band weight.
+    {
+      let rayStep = 4;
+      // "Fold noise" at coarse scale groups rays into curtain bundles
+      for (let x = 0; x < cloudW; x += rayStep) {
+        // Coarse fold structure — areas of dense bright rays
+        let fold = p.noise(x * 0.006 + hue * 0.05, t * speed * 0.0008);
+        // Fine ray noise
+        let rn   = p.noise(x * 0.014 + hue * 0.12, t * speed * 0.0022);
+
+        let foldBoost = p.map(fold, 0.35, 0.75, 0.0, 1.0, true); // 0 outside folds
+        let rayStrength = rn * foldBoost;
+        if (rayStrength < 0.18) continue;
+
+        // Ray base position follows the same wave as the main body
+        let yn   = p.noise(x * nxScale, t * speed * 0.001);
+        let n2   = p.noise(x * nxScale * 3.5 + 300, t * speed * 0.0012);
+        let rayY = baseY
+                 + (yn  - 0.5) * maxH * 1.8
+                 + (n2  - 0.5) * maxH * 0.35;
+
+        let rayH = rayStrength * maxH * weight * 1.35;
+        let rayW = p.map(foldBoost, 0, 1, 1.0, 2.2); // fold centres get thicker rays
+
+        // Gradient ray: bright at base, fade toward tip (silk-light quality)
+        let baseA = weight * 68 * rayStrength;
+
+        // Bottom segment — full brightness
+        buf.strokeWeight(rayW);
+        buf.stroke(hue, sat, 100, baseA * 0.95);
+        buf.line(x, rayY, x, rayY - rayH * 0.45);
+
+        // Mid segment — softer
+        buf.stroke(hue, sat * 0.8, 100, baseA * 0.50);
+        buf.line(x, rayY - rayH * 0.45, x, rayY - rayH * 0.75);
+
+        // Tip — faint wisp
+        buf.stroke(hue, sat * 0.5, 100, baseA * 0.18);
+        buf.line(x, rayY - rayH * 0.75, x, rayY - rayH);
       }
       buf.noStroke();
     }
