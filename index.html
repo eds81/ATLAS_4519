@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Aurora A La Carte</title>
+  <style>
+    *, *::before, *::after {
+      margin: 0; padding: 0; box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --green:    #00ff88;
+      --purple:   #9955ff;
+      --blue:     #44aaff;
+      --gold:     #ffcc44;
+      --panel-bg: rgba(2, 8, 28, 0.96);
+      --border:   rgba(80, 200, 140, 0.22);
+      --text:     #b0e8cc;
+      --label:    rgba(140, 210, 175, 0.65);
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Georgia', serif;
+      color: var(--text);
+      touch-action: none;
+      user-select: none;
+    }
+
+    #canvas-wrap {
+      position: fixed; inset: 0; z-index: 0;
+    }
+
+    /* flash reveal */
+    #flash {
+      position: fixed; inset: 0; z-index: 5;
+      background: radial-gradient(ellipse at 50% 35%, rgba(80,255,160,0.15), transparent 60%);
+      pointer-events: none; opacity: 0;
+      transition: opacity 0.08s;
+    }
+    #flash.on { opacity: 1; }
+
+    /* aurora name */
+    #aurora-name {
+      position: fixed; top: 18px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      font-size: 1rem; letter-spacing: 0.13em;
+      color: rgba(180,255,220,0.9);
+      text-shadow: 0 0 22px rgba(0,255,120,0.5), 0 0 50px rgba(0,200,100,0.2);
+      pointer-events: none; white-space: nowrap;
+      opacity: 0; transition: opacity 1.2s ease;
+    }
+    #aurora-name.show { opacity: 1; }
+
+    /* science tip */
+    #science-tip {
+      position: fixed; bottom: 10px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      font-size: 0.68rem; letter-spacing: 0.04em;
+      color: rgba(130,200,170,0.6);
+      max-width: 460px; text-align: center;
+      line-height: 1.5;
+      pointer-events: none;
+      opacity: 0; transition: opacity 1.5s ease;
+    }
+    #science-tip.show { opacity: 1; }
+    body.projection #science-tip { display: none; }
+
+    /* toggle tab */
+    #tab {
+      position: fixed; bottom: 0; left: 50%;
+      transform: translateX(-50%);
+      z-index: 30;
+      background: var(--panel-bg);
+      border: 1px solid var(--border); border-bottom: none;
+      border-radius: 12px 12px 0 0;
+      padding: 7px 22px 5px;
+      font-size: 0.70rem; letter-spacing: 0.14em;
+      color: var(--label); cursor: pointer;
+      font-family: inherit;
+      transition: color 0.2s;
+    }
+    #tab:active { color: var(--green); }
+
+    /* panel */
+    #panel {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      z-index: 25;
+      background: var(--panel-bg);
+      border-top: 1px solid var(--border);
+      padding: 16px 20px 24px;
+      display: flex; flex-direction: column; gap: 13px;
+      transform: translateY(100%);
+      transition: transform 0.36s cubic-bezier(0.25,0.46,0.45,0.94);
+    }
+    #panel.open { transform: translateY(0); }
+
+    .panel-head {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .panel-title {
+      font-size: 1.2rem; letter-spacing: 0.06em;
+      color: var(--green);
+      text-shadow: 0 0 16px rgba(0,255,120,0.45);
+    }
+    .panel-sub {
+      font-size: 0.65rem; letter-spacing: 0.07em;
+      color: var(--label); margin-top: 2px;
+    }
+
+    #proj-btn {
+      background: rgba(60,20,100,0.35);
+      border: 1px solid rgba(153,85,255,0.4);
+      border-radius: 18px;
+      color: rgba(190,140,255,0.8);
+      padding: 7px 14px;
+      font-size: 0.76rem; letter-spacing: 0.05em;
+      font-family: inherit; cursor: pointer;
+      transition: all 0.2s;
+    }
+    #proj-btn:active {
+      background: rgba(80,30,140,0.55);
+      box-shadow: 0 0 18px rgba(153,85,255,0.35);
+    }
+
+    /* ingredient grid */
+    .ingredients {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px 14px;
+    }
+    @media (max-width: 600px) {
+      .ingredients { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .ingredient {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 6px;
+    }
+    .ingredient .ing-icon {
+      font-size: 1.5rem; line-height: 1;
+    }
+    .ingredient label {
+      font-size: 0.60rem; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--label);
+      text-align: center; line-height: 1.35;
+    }
+    .ingredient .val-lbl {
+      font-size: 0.65rem; color: var(--text); min-height: 1em;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none; appearance: none;
+      width: 100%; height: 5px; border-radius: 3px;
+      outline: none; cursor: pointer;
+      background: rgba(255,255,255,0.08);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 9px rgba(255,255,255,0.4);
+      cursor: pointer;
+    }
+    input[type="range"].green  { accent-color: var(--green); }
+    input[type="range"].purple { accent-color: var(--purple); }
+    input[type="range"].blue   { accent-color: var(--blue); }
+    input[type="range"].gold   { accent-color: var(--gold); }
+    input[type="range"].white  { accent-color: #fff; }
+
+    .solar-row { display: flex; gap: 5px; justify-content: center; }
+    .sol-btn {
+      width: 33px; height: 33px; border-radius: 50%;
+      border: 2px solid rgba(255,200,60,0.18);
+      background: rgba(255,180,0,0.05);
+      color: rgba(255,200,60,0.28);
+      font-size: 0.9rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.18s; font-family: inherit;
+    }
+    .sol-btn.lit {
+      border-color: rgba(255,200,60,0.85);
+      background: rgba(255,180,0,0.22);
+      color: var(--gold);
+      box-shadow: 0 0 11px rgba(255,180,0,0.32);
+    }
+
+    #bake-btn {
+      width: 100%; padding: 14px;
+      background: linear-gradient(135deg, #071f14 0%, #0d3d23 100%);
+      border: 1px solid rgba(0,255,120,0.3);
+      border-radius: 11px;
+      color: #7affb0; font-size: 1.02rem;
+      letter-spacing: 0.08em; font-family: inherit;
+      cursor: pointer;
+      text-shadow: 0 0 11px rgba(0,255,100,0.35);
+      box-shadow: 0 0 22px rgba(0,180,80,0.07);
+      transition: all 0.18s;
+    }
+    #bake-btn:active {
+      background: linear-gradient(135deg, #0d3d23 0%, #175e36 100%);
+      box-shadow: 0 0 32px rgba(0,255,100,0.22);
+    }
+
+    /* projection overlay */
+    #proj-overlay {
+      position: fixed; inset: 0; z-index: 50;
+      display: none; align-items: flex-end; justify-content: center;
+      padding-bottom: 16px;
+    }
+    #proj-overlay.active { display: flex; }
+    #proj-overlay-exit {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 18px; color: rgba(255,255,255,0.25);
+      padding: 7px 16px; font-size: 0.70rem;
+      letter-spacing: 0.12em; cursor: pointer;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+
+<div id="canvas-wrap"></div>
+<div id="flash"></div>
+<div id="aurora-name"></div>
+<div id="science-tip"></div>
+
+<button id="tab">&#9650; RECIPE</button>
+
+<div id="panel">
+  <div class="panel-head">
+    <div>
+      <div class="panel-title">Aurora A La Carte</div>
+      <div class="panel-sub">Build your own northern lights</div>
+    </div>
+    <button id="proj-btn">&#128302; Projection Mode</button>
+  </div>
+
+  <div class="ingredients">
+
+    <div class="ingredient" style="grid-column: span 2;">
+      <div class="ing-icon">&#9728;&#65039;</div>
+      <label>Solar Storm (Kp)</label>
+      <div class="solar-row" id="solar-row">
+        <button class="sol-btn lit" data-lv="1">1</button>
+        <button class="sol-btn"     data-lv="2">2</button>
+        <button class="sol-btn"     data-lv="3">3</button>
+        <button class="sol-btn"     data-lv="4">4</button>
+        <button class="sol-btn"     data-lv="5">5</button>
+      </div>
+      <div class="val-lbl" id="solar-label">Quiet</div>
+    </div>
+
+    <div class="ingredient">
+      <div class="ing-icon" style="color:#44ff88; font-size:1.3rem; font-weight:bold;">O</div>
+      <label>Oxygen<br><span style="font-size:0.52rem;opacity:0.7">Green &amp; Red</span></label>
+      <input type="range" class="green" id="sl-oxygen"   min="0" max="100" value="75">
+      <div class="val-lbl" id="val-oxygen">75%</div>
+    </div>
+
+    <div class="ingredient">
+      <div class="ing-icon" style="color:#9955ff; font-size:1.3rem; font-weight:bold;">N</div>
+      <label>Nitrogen<br><span style="font-size:0.52rem;opacity:0.7">Blue &amp; Purple</span></label>
+      <input type="range" class="purple" id="sl-nitrogen" min="0" max="100" value="40">
+      <div class="val-lbl" id="val-nitrogen">40%</div>
+    </div>
+
+    <div class="ingredient">
+      <div class="ing-icon">&#127758;</div>
+      <label>How Far<br>North?</label>
+      <input type="range" class="gold" id="sl-latitude" min="40" max="85" value="65">
+      <div class="val-lbl" id="val-latitude">65&deg;N</div>
+    </div>
+
+    <div class="ingredient">
+      <div class="ing-icon">&#127769;</div>
+      <label>Altitude<br><span style="font-size:0.52rem;opacity:0.7">100–300 km</span></label>
+      <input type="range" class="blue" id="sl-altitude" min="0" max="100" value="50">
+      <div class="val-lbl" id="val-altitude">Mid</div>
+    </div>
+
+  </div>
+
+  <button id="bake-btn">&#127859; Bake My Aurora!</button>
+</div>
+
+<div id="proj-overlay">
+  <button id="proj-overlay-exit">TAP TWICE TO EXIT</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.3/lib/p5.min.js"></script>
+<script>
+// ── Live / target params ──────────────────────────────────
+const live   = { solar:1, oxygen:0.75, nitrogen:0.40, latitude:65, altitude:0.50 };
+const target = { ...live };
+
+const solarLabels = ['','Quiet','Mild','Active','Strong!','EXTREME!'];
+const scienceTips = [
+  'Green aurora: oxygen atoms at ~150 km — the most common aurora color.',
+  'Red aurora: oxygen atoms at ~300 km — needs a strong solar storm.',
+  'Blue & purple: nitrogen molecules at ~100 km altitude.',
+  'Aurora forms when solar wind particles follow Earth\'s magnetic field lines to the poles.',
+  'Kp 5+ means the aurora may be visible from mid-latitudes!',
+  'The further north you are, the more often you can see the aurora.',
+  'Solar flares and coronal mass ejections (CMEs) create the most vivid displays.',
+  'At very high altitudes, rare red auroras can appear at the very top of the curtain.',
+];
+
+function makeAuroraName(o, n, sol) {
+  const G = ['Emerald','Jade','Verdant','Viridian'];
+  const P = ['Amethyst','Violet','Indigo','Cosmic'];
+  const R = ['Crimson','Scarlet','Carmine'];
+  const M = ['Polar','Boreal','Celestial','Solar','Arctic'];
+  const N = ['Cascade','Symphony','Veil','Curtain','Dreamscape','Tapestry','Wave'];
+  const A = ['Grand','Radiant','Blazing','Gentle','Quiet','Vivid','Wild','Ethereal'];
+  let color = o>0.70 && n<0.35 ? G[Math.random()*G.length|0]
+            : n>0.65 && o<0.40 ? P[Math.random()*P.length|0]
+            : o>0.55 && sol>=4 ? R[Math.random()*R.length|0]
+            : M[Math.random()*M.length|0];
+  return `The ${A[Math.random()*A.length|0]} ${color} ${N[Math.random()*N.length|0]}`;
+}
+
+// ── p5 sketch ─────────────────────────────────────────────
+const sketch = (p) => {
+  let t = 0;
+  let buf;            // aurora graphics buffer
+  let cloudW, cloudH, cloudX, cloudY;
+  // pre-baked mask shape vertices (updated each frame slowly)
+  const MASK_PTS = 72;
+
+  p.setup = () => {
+    let cnv = p.createCanvas(window.innerWidth, window.innerHeight);
+    cnv.parent('canvas-wrap');
+    p.colorMode(p.HSB, 360, 100, 100, 100);
+    initCloud();
+  };
+
+  function initCloud() {
+    // Wide cloud with guaranteed margins so it never clips the screen edges
+    let margin = 16;
+    cloudW = Math.min(p.width - margin * 2, 1300);
+    cloudH = cloudW * 0.42;
+    cloudX = Math.max(margin, (p.width  - cloudW) / 2);
+    // Centre vertically in the top ~60% of screen, but never overflow bottom
+    cloudY = Math.max(margin, p.height * 0.06);
+    cloudY = Math.min(cloudY, p.height - cloudH - margin);
+    if (buf) buf.remove();
+    buf = p.createGraphics(cloudW, cloudH);
+    buf.colorMode(p.HSB, 360, 100, 100, 100);
+  }
+
+  p.draw = () => {
+    for (let k in live) live[k] += (target[k] - live[k]) * 0.016;
+
+    // Solid black
+    p.background(0);
+
+    drawAmbientGlow();
+    drawAuroraCloud();
+    t++;
+  };
+
+  // Soft coloured halo around the cloud position
+  function drawAmbientGlow() {
+    let sol = live.solar / 5;
+    let lat = p.map(live.latitude, 40, 85, 0.10, 1.0);
+    let intensity = sol * lat;
+    if (intensity < 0.04) return;
+
+    let cx = cloudX + cloudW * 0.5;
+    let cy = cloudY + cloudH * 0.5;
+    let pulseT = p.sin(t * 0.012) * 0.5 + 0.5; // 0–1 slow pulse
+
+    p.noStroke();
+    p.blendMode(p.ADD);
+
+    // Green halo
+    let gOx = live.oxygen * intensity;
+    for (let i = 9; i >= 1; i--) {
+      let r = i / 9;
+      let a = (1 - r) * gOx * (14 + pulseT * 4);
+      p.fill(122, 75, 90, a);
+      p.ellipse(cx, cy, cloudW * (1 + (1-r)*0.45), cloudH * (1 + (1-r)*0.45));
+    }
+
+    // Violet/blue halo
+    let bNi = live.nitrogen * intensity;
+    for (let i = 9; i >= 1; i--) {
+      let r = i / 9;
+      let a = (1 - r) * bNi * (11 + pulseT * 3);
+      p.fill(248, 75, 90, a);
+      p.ellipse(cx, cy, cloudW * (1 + (1-r)*0.40), cloudH * (1 + (1-r)*0.40));
+    }
+
+    p.blendMode(p.BLEND);
+  }
+
+  // Draw the aurora into the buffer, mask to cloud blob, composite onto canvas
+  function drawAuroraCloud() {
+    let ox  = live.oxygen;
+    let ni  = live.nitrogen;
+    let sol = live.solar / 5;
+    let lat = p.map(live.latitude, 40, 85, 0.10, 1.0);
+    let alt = live.altitude;
+    let intensity = sol * lat;
+
+    buf.clear();
+
+    if (intensity >= 0.03) {
+      let altShift = p.map(alt, 0, 1, 0.12, -0.05);
+
+      // [ hue, sat, bri, baseY(0–1), maxH(0–1), weight, noiseSpeed, noiseXScale ]
+      const bands = [
+        [355, 70, 90, 0.12+altShift, 0.09, ox*0.28*(sol>0.5?1:sol*2),     0.55, 0.0018],
+        [ 10, 63, 88, 0.18+altShift, 0.09, ox*0.40*(sol>0.35?1:sol*2.5),  0.62, 0.0022],
+        [ 92, 87, 98, 0.25+altShift, 0.12, ox*0.68,   0.78, 0.0020],
+        [122, 96,100, 0.33+altShift, 0.20, ox,         1.00, 0.0018],
+        [166, 86, 90, 0.47+altShift, 0.13, (ox*0.5+ni*0.6)*0.85, 0.88, 0.0025],
+        [214, 90, 92, 0.57+altShift, 0.12, ni,         0.92, 0.0022],
+        [268, 80, 86, 0.65+altShift, 0.10, ni*0.72,    0.78, 0.0026],
+      ];
+
+      buf.blendMode(p.ADD);
+      buf.noStroke();
+
+      for (let [h, s, b, by, mh, w, spd, nxs] of bands) {
+        let eff = w * intensity;
+        if (eff < 0.03) continue;
+        drawBand(h, s, b, by * cloudH, mh * cloudH, eff, spd, nxs);
+      }
+
+      buf.blendMode(p.BLEND);
+    }
+
+    applyCloudMask();
+
+    // Subtle vertical float only (wide cloud shouldn't drift side-to-side)
+    let dy = Math.sin(t * 0.0014 + 1.2) * 3;
+    p.image(buf, cloudX, cloudY + dy);
+  }
+
+  function drawBand(hue, sat, bri, baseY, maxH, weight, speed, nxScale) {
+    const STEP = 5;
+    const passes = [
+      { sy: 2.0, sh: 1.6, af: 0.28 },
+      { sy: 1.0, sh: 1.0, af: 0.54 },
+      { sy: 0.44, sh: 0.52, af: 0.88 },
+    ];
+
+    for (let pass of passes) {
+      let alpha = weight * 60 * pass.af;
+      buf.fill(hue, sat, bri, alpha);
+      buf.beginShape();
+
+      let topPts = [];
+      for (let x = -STEP * 2; x <= cloudW + STEP * 2; x += STEP) {
+        let n  = p.noise(x * nxScale,       t * speed * 0.001);
+        let n2 = p.noise(x * nxScale + 300, t * speed * 0.0008);
+        let y  = baseY
+               + (n  - 0.5) * maxH * 2.10 * pass.sy
+               + (n2 - 0.5) * maxH * 0.55 * pass.sy;
+        topPts.push([x, y]);
+      }
+
+      for (let [x, y] of topPts) buf.curveVertex(x, y);
+
+      for (let i = topPts.length - 1; i >= 0; i--) {
+        let [x, y] = topPts[i];
+        let nb = p.noise(x * nxScale + 600, t * speed * 0.0007 + 40);
+        buf.curveVertex(x, y + maxH * pass.sh + (nb - 0.5) * maxH * 0.32);
+      }
+      buf.endShape(p.CLOSE);
+    }
+
+    // Vertical curtain striations
+    if (weight > 0.26) {
+      buf.strokeWeight(1.3);
+      for (let x = 0; x < cloudW; x += 7) {
+        let rn = p.noise(x * 0.011 + hue * 0.1, t * speed * 0.002);
+        if (rn > 0.61) {
+          let rayH = rn * maxH * weight * 0.82;
+          let yn   = p.noise(x * nxScale, t * speed * 0.001);
+          let ry   = baseY + (yn - 0.5) * maxH * 0.85;
+          let a    = weight * 40 * ((rn - 0.61) / 0.39);
+          buf.stroke(hue, sat * 0.4, 100, a);
+          buf.line(x, ry, x, ry - rayH);
+        }
+      }
+      buf.noStroke();
+    }
+  }
+
+  // Organic noise-warped cloud mask via destination-in layering
+  function applyCloudMask() {
+    let ctx = buf.drawingContext;
+    let cx  = cloudW * 0.5;
+    let cy  = cloudH * 0.5;
+    let rx  = cloudW * 0.49;
+    let ry  = cloudH * 0.48;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-in';
+
+    // Layered semi-transparent rings — wider opaque core so waves show fully
+    const layers = [
+      { s: 0.68, a: 1.00 },
+      { s: 0.78, a: 0.94 },
+      { s: 0.87, a: 0.78 },
+      { s: 0.93, a: 0.52 },
+      { s: 0.98, a: 0.26 },
+      { s: 1.02, a: 0.09 },
+      { s: 1.06, a: 0.02 },
+    ];
+
+    for (let lyr of layers) {
+      ctx.beginPath();
+      for (let i = 0; i <= MASK_PTS; i++) {
+        let angle = (i / MASK_PTS) * Math.PI * 2;
+        // noise warp — slowly morphing organic edge
+        let nv = p.noise(
+          Math.cos(angle) * 2.0 + 80,
+          Math.sin(angle) * 2.0 + 80,
+          t * 0.0009
+        );
+        let wobble = 1 + (nv - 0.5) * 0.20;
+        let x = cx + Math.cos(angle) * rx * lyr.s * wobble;
+        let y = cy + Math.sin(angle) * ry * lyr.s * wobble;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = `rgba(0,0,0,${lyr.a})`;
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  p.windowResized = () => {
+    p.resizeCanvas(window.innerWidth, window.innerHeight);
+    initCloud();
+  };
+};
+
+new p5(sketch);
+
+// ── UI: solar buttons ──────────────────────────────────────
+let solarLevel = 1;
+const solBtns     = document.querySelectorAll('.sol-btn');
+const solarLabelEl = document.getElementById('solar-label');
+
+solBtns.forEach(btn => btn.addEventListener('click', () => {
+  solarLevel = parseInt(btn.dataset.lv);
+  solBtns.forEach(b => b.classList.toggle('lit', parseInt(b.dataset.lv) <= solarLevel));
+  solarLabelEl.textContent = solarLabels[solarLevel];
+  target.solar = solarLevel;
+}));
+
+// ── UI: sliders (live feedback) ────────────────────────────
+[
+  { id:'sl-oxygen',   valId:'val-oxygen',   fmt:v=>Math.round(v)+'%',           key:'oxygen',   scale:v=>v/100 },
+  { id:'sl-nitrogen', valId:'val-nitrogen', fmt:v=>Math.round(v)+'%',           key:'nitrogen', scale:v=>v/100 },
+  { id:'sl-latitude', valId:'val-latitude', fmt:v=>Math.round(v)+'°N',          key:'latitude', scale:v=>parseFloat(v) },
+  { id:'sl-altitude', valId:'val-altitude', fmt:v=>(v>75?'High (~280km)':v>45?'Mid (~150km)':'Low (~100km)'), key:'altitude', scale:v=>v/100 },
+].forEach(({ id, valId, fmt, key, scale }) => {
+  const sl = document.getElementById(id);
+  const vl = document.getElementById(valId);
+  const upd = () => { vl.textContent = fmt(sl.value); target[key] = scale(sl.value); };
+  sl.addEventListener('input', upd);
+  upd();
+});
+
+// ── UI: bake ───────────────────────────────────────────────
+const flashEl  = document.getElementById('flash');
+const nameEl   = document.getElementById('aurora-name');
+const tipEl    = document.getElementById('science-tip');
+let ntTimer, tipTimer;
+
+document.getElementById('bake-btn').addEventListener('click', () => {
+  target.solar = solarLevel;
+
+  flashEl.classList.add('on');
+  setTimeout(() => flashEl.classList.remove('on'), 160);
+
+  clearTimeout(ntTimer);
+  nameEl.classList.remove('show');
+  setTimeout(() => {
+    nameEl.textContent = makeAuroraName(target.oxygen, target.nitrogen, target.solar);
+    nameEl.classList.add('show');
+    ntTimer = setTimeout(() => nameEl.classList.remove('show'), 7000);
+  }, 200);
+
+  clearTimeout(tipTimer);
+  tipEl.classList.remove('show');
+  setTimeout(() => {
+    tipEl.textContent = scienceTips[Math.random() * scienceTips.length | 0];
+    tipEl.classList.add('show');
+    tipTimer = setTimeout(() => tipEl.classList.remove('show'), 9000);
+  }, 550);
+});
+
+// ── UI: panel toggle ───────────────────────────────────────
+const panel  = document.getElementById('panel');
+const tabBtn = document.getElementById('tab');
+let panelOpen = false;
+
+tabBtn.addEventListener('click', () => {
+  panelOpen = !panelOpen;
+  panel.classList.toggle('open', panelOpen);
+  tabBtn.textContent = panelOpen ? '▼ HIDE RECIPE' : '▲ RECIPE';
+});
+
+// ── UI: projection mode ────────────────────────────────────
+const projOverlay = document.getElementById('proj-overlay');
+document.getElementById('proj-btn').addEventListener('click', () => {
+  panel.classList.remove('open'); panelOpen = false;
+  tabBtn.textContent = '▲ RECIPE';
+  tabBtn.style.display = 'none';
+  projOverlay.classList.add('active');
+});
+document.getElementById('proj-overlay-exit').addEventListener('click', exitProj);
+
+let lastTap = 0;
+document.getElementById('canvas-wrap').addEventListener('touchend', () => {
+  const now = Date.now();
+  if (now - lastTap < 380 && projOverlay.classList.contains('active')) exitProj();
+  lastTap = now;
+});
+
+function exitProj() {
+  projOverlay.classList.remove('active');
+  tabBtn.style.display = '';
+}
+</script>
+</body>
+</html>
