@@ -31,9 +31,8 @@
       user-select: none;
     }
 
-    #aurora-canvas {
+    #canvas-wrap {
       position: fixed; inset: 0; z-index: 0;
-      display: block; width: 100%; height: 100%;
     }
 
     /* flash reveal */
@@ -71,6 +70,7 @@
       opacity: 0; transition: opacity 1.5s ease;
     }
     #science-tip.show { opacity: 1; }
+    body.projection #science-tip { display: none; }
 
     /* toggle tab */
     #tab {
@@ -227,7 +227,7 @@
 </head>
 <body>
 
-<canvas id="aurora-canvas"></canvas>
+<div id="canvas-wrap"></div>
 <div id="flash"></div>
 <div id="aurora-name"></div>
 <div id="science-tip"></div>
@@ -295,8 +295,9 @@
   <button id="proj-overlay-exit">TAP TWICE TO EXIT</button>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.3/lib/p5.min.js"></script>
 <script>
-// ── Shared live / target params (driven by UI sliders) ─────
+// ── Live / target params ──────────────────────────────────
 const live   = { solar:1, oxygen:0.75, nitrogen:0.40, latitude:65, altitude:0.50 };
 const target = { ...live };
 
@@ -326,244 +327,232 @@ function makeAuroraName(o, n, sol) {
   return `The ${A[Math.random()*A.length|0]} ${color} ${N[Math.random()*N.length|0]}`;
 }
 
-// ═══════════════════════════════════════════════════════════
-//  CANVAS AURORA — requestAnimationFrame
-// ═══════════════════════════════════════════════════════════
-{
-  const canvas = document.getElementById('aurora-canvas');
-  const ctx    = canvas.getContext('2d');
-  let W, H;
+// ── p5 sketch ─────────────────────────────────────────────
+const sketch = (p) => {
+  let t = 0;
+  let buf;            // aurora graphics buffer
+  let cloudW, cloudH, cloudX, cloudY;
+  // pre-baked mask shape vertices (updated each frame slowly)
+  const MASK_PTS = 72;
 
-  // ── Resize: match canvas pixels to viewport ─────────────
-  function resizeCanvas() {
-    W = canvas.width  = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-    spawnStars();
+  p.setup = () => {
+    let cnv = p.createCanvas(window.innerWidth, window.innerHeight);
+    cnv.parent('canvas-wrap');
+    p.colorMode(p.HSB, 360, 100, 100, 100);
+    initCloud();
+  };
+
+  function initCloud() {
+    // Wide cloud with guaranteed margins so it never clips the screen edges
+    let margin = 16;
+    cloudW = Math.min(p.width - margin * 2, 1300);
+    cloudH = cloudW * 0.42;
+    cloudX = Math.max(margin, (p.width  - cloudW) / 2);
+    // Centre vertically in the top ~60% of screen, but never overflow bottom
+    cloudY = Math.max(margin, p.height * 0.06);
+    cloudY = Math.min(cloudY, p.height - cloudH - margin);
+    if (buf) buf.remove();
+    buf = p.createGraphics(cloudW, cloudH);
+    buf.colorMode(p.HSB, 360, 100, 100, 100);
   }
-  window.addEventListener('resize', resizeCanvas);
 
-  // ── Stars: static tiny dots, re-seeded on resize ────────
-  let stars = [];
-  function spawnStars() {
-    stars = [];
-    for (let i = 0; i < 190; i++) {
-      stars.push({
-        x: Math.random() * W,
-        y: Math.random() * H * 0.88,
-        r: Math.random() * 0.5 + 0.3,
-        a: (Math.random() * 0.40 + 0.35).toFixed(3),
-      });
+  p.draw = () => {
+    for (let k in live) live[k] += (target[k] - live[k]) * 0.016;
+
+    // Solid black
+    p.background(0);
+
+    drawAmbientGlow();
+    drawAuroraCloud();
+    t++;
+  };
+
+  // Soft coloured halo around the cloud position
+  function drawAmbientGlow() {
+    let sol = live.solar / 5;
+    let lat = p.map(live.latitude, 40, 85, 0.10, 1.0);
+    let intensity = sol * lat;
+    if (intensity < 0.04) return;
+
+    let cx = cloudX + cloudW * 0.5;
+    let cy = cloudY + cloudH * 0.5;
+    let pulseT = p.sin(t * 0.012) * 0.5 + 0.5; // 0–1 slow pulse
+
+    p.noStroke();
+    p.blendMode(p.ADD);
+
+    // Green halo
+    let gOx = live.oxygen * intensity;
+    for (let i = 9; i >= 1; i--) {
+      let r = i / 9;
+      let a = (1 - r) * gOx * (14 + pulseT * 4);
+      p.fill(122, 75, 90, a);
+      p.ellipse(cx, cy, cloudW * (1 + (1-r)*0.45), cloudH * (1 + (1-r)*0.45));
+    }
+
+    // Violet/blue halo
+    let bNi = live.nitrogen * intensity;
+    for (let i = 9; i >= 1; i--) {
+      let r = i / 9;
+      let a = (1 - r) * bNi * (11 + pulseT * 3);
+      p.fill(248, 75, 90, a);
+      p.ellipse(cx, cy, cloudW * (1 + (1-r)*0.40), cloudH * (1 + (1-r)*0.40));
+    }
+
+    p.blendMode(p.BLEND);
+  }
+
+  // Draw the aurora into the buffer, mask to cloud blob, composite onto canvas
+  function drawAuroraCloud() {
+    let ox  = live.oxygen;
+    let ni  = live.nitrogen;
+    let sol = live.solar / 5;
+    let lat = p.map(live.latitude, 40, 85, 0.10, 1.0);
+    let alt = live.altitude;
+    let intensity = sol * lat;
+
+    buf.clear();
+
+    if (intensity >= 0.03) {
+      let altShift = p.map(alt, 0, 1, 0.12, -0.05);
+
+      // [ hue, sat, bri, baseY(0–1), maxH(0–1), weight, noiseSpeed, noiseXScale ]
+      const bands = [
+        [355, 70, 90, 0.12+altShift, 0.09, ox*0.28*(sol>0.5?1:sol*2),     0.55, 0.0018],
+        [ 10, 63, 88, 0.18+altShift, 0.09, ox*0.40*(sol>0.35?1:sol*2.5),  0.62, 0.0022],
+        [ 92, 87, 98, 0.25+altShift, 0.12, ox*0.68,   0.78, 0.0020],
+        [122, 96,100, 0.33+altShift, 0.20, ox,         1.00, 0.0018],
+        [166, 86, 90, 0.47+altShift, 0.13, (ox*0.5+ni*0.6)*0.85, 0.88, 0.0025],
+        [214, 90, 92, 0.57+altShift, 0.12, ni,         0.92, 0.0022],
+        [268, 80, 86, 0.65+altShift, 0.10, ni*0.72,    0.78, 0.0026],
+      ];
+
+      buf.blendMode(p.ADD);
+      buf.noStroke();
+
+      for (let [h, s, b, by, mh, w, spd, nxs] of bands) {
+        let eff = w * intensity;
+        if (eff < 0.03) continue;
+        drawBand(h, s, b, by * cloudH, mh * cloudH, eff, spd, nxs);
+      }
+
+      buf.blendMode(p.BLEND);
+    }
+
+    applyCloudMask();
+
+    // Subtle vertical float only (wide cloud shouldn't drift side-to-side)
+    let dy = Math.sin(t * 0.0014 + 1.2) * 3;
+    p.image(buf, cloudX, cloudY + dy);
+  }
+
+  function drawBand(hue, sat, bri, baseY, maxH, weight, speed, nxScale) {
+    const STEP = 5;
+    const passes = [
+      { sy: 2.0, sh: 1.6, af: 0.28 },
+      { sy: 1.0, sh: 1.0, af: 0.54 },
+      { sy: 0.44, sh: 0.52, af: 0.88 },
+    ];
+
+    for (let pass of passes) {
+      let alpha = weight * 60 * pass.af;
+      buf.fill(hue, sat, bri, alpha);
+      buf.beginShape();
+
+      let topPts = [];
+      for (let x = -STEP * 2; x <= cloudW + STEP * 2; x += STEP) {
+        let n  = p.noise(x * nxScale,       t * speed * 0.001);
+        let n2 = p.noise(x * nxScale + 300, t * speed * 0.0008);
+        let y  = baseY
+               + (n  - 0.5) * maxH * 2.10 * pass.sy
+               + (n2 - 0.5) * maxH * 0.55 * pass.sy;
+        topPts.push([x, y]);
+      }
+
+      for (let [x, y] of topPts) buf.curveVertex(x, y);
+
+      for (let i = topPts.length - 1; i >= 0; i--) {
+        let [x, y] = topPts[i];
+        let nb = p.noise(x * nxScale + 600, t * speed * 0.0007 + 40);
+        buf.curveVertex(x, y + maxH * pass.sh + (nb - 0.5) * maxH * 0.32);
+      }
+      buf.endShape(p.CLOSE);
+    }
+
+    // Vertical curtain striations
+    if (weight > 0.26) {
+      buf.strokeWeight(1.3);
+      for (let x = 0; x < cloudW; x += 7) {
+        let rn = p.noise(x * 0.011 + hue * 0.1, t * speed * 0.002);
+        if (rn > 0.61) {
+          let rayH = rn * maxH * weight * 0.82;
+          let yn   = p.noise(x * nxScale, t * speed * 0.001);
+          let ry   = baseY + (yn - 0.5) * maxH * 0.85;
+          let a    = weight * 40 * ((rn - 0.61) / 0.39);
+          buf.stroke(hue, sat * 0.4, 100, a);
+          buf.line(x, ry, x, ry - rayH);
+        }
+      }
+      buf.noStroke();
     }
   }
 
-  function drawStars() {
+  // Organic noise-warped cloud mask via destination-in layering
+  function applyCloudMask() {
+    let ctx = buf.drawingContext;
+    let cx  = cloudW * 0.5;
+    let cy  = cloudH * 0.5;
+    let rx  = cloudW * 0.49;
+    let ry  = cloudH * 0.48;
+
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 1;
-    for (const s of stars) {
+    ctx.globalCompositeOperation = 'destination-in';
+
+    // Layered semi-transparent rings — wider opaque core so waves show fully
+    const layers = [
+      { s: 0.68, a: 1.00 },
+      { s: 0.78, a: 0.94 },
+      { s: 0.87, a: 0.78 },
+      { s: 0.93, a: 0.52 },
+      { s: 0.98, a: 0.26 },
+      { s: 1.02, a: 0.09 },
+      { s: 1.06, a: 0.02 },
+    ];
+
+    for (let lyr of layers) {
       ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,255,${s.a})`;
+      for (let i = 0; i <= MASK_PTS; i++) {
+        let angle = (i / MASK_PTS) * Math.PI * 2;
+        // noise warp — slowly morphing organic edge
+        let nv = p.noise(
+          Math.cos(angle) * 2.0 + 80,
+          Math.sin(angle) * 2.0 + 80,
+          t * 0.0009
+        );
+        let wobble = 1 + (nv - 0.5) * 0.20;
+        let x = cx + Math.cos(angle) * rx * lyr.s * wobble;
+        let y = cy + Math.sin(angle) * ry * lyr.s * wobble;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = `rgba(0,0,0,${lyr.a})`;
       ctx.fill();
     }
-    ctx.restore();
-  }
-
-  // ── Band definitions ─────────────────────────────────────
-  // Each band is a long horizontal bezier ribbon spanning full width.
-  //
-  // baseY    : resting Y as fraction of H (0 = top of screen)
-  // baseAmp  : wave amplitude as fraction of H
-  // color    : CSS hex color
-  // opacity  : base opacity scaled by live recipe params
-  // sw       : stroke width (px) — the ribbon thickness
-  // blur     : blur radius (px) applied to the glow pass
-  // speed    : oscillation rate (rad/ms) → period = 2π/speed
-  //            ~0.00070 → 9 sec period, ~0.00105 → 6 sec period
-  // phase    : initial phase so bands start offset from each other
-  // waveFreq : phase step between adjacent control points
-  //            1.5–1.7 ≈ 2–3 full wavelengths visible across screen
-  // gas      : 'O' scales with oxygen slider, 'N' with nitrogen
-
-  const BAND_DEFS = [
-    // Faint teal upper wash — high-altitude diffuse glow
-    { baseY:0.09, baseAmp:0.038, color:'#00ffcc', opacity:0.30, sw:26, blur:28, speed:0.000630, phase:0.00, waveFreq:1.35, gas:'O' },
-    // Magenta/crimson crown — very high altitude, needs strong storm
-    { baseY:0.15, baseAmp:0.044, color:'#ff55bb', opacity:0.22, sw:20, blur:22, speed:0.000524, phase:2.65, waveFreq:1.18, gas:'O' },
-    // Yellow-green upper fringe
-    { baseY:0.22, baseAmp:0.052, color:'#88ff44', opacity:0.52, sw:36, blur:28, speed:0.000720, phase:1.10, waveFreq:1.52, gas:'O' },
-    // ── PRIMARY vivid emerald green — the iconic aurora curtain ──
-    { baseY:0.31, baseAmp:0.072, color:'#00ff66', opacity:0.90, sw:70, blur:38, speed:0.000800, phase:0.40, waveFreq:1.65, gas:'O' },
-    // Secondary green body — fills out the main curtain volume
-    { baseY:0.42, baseAmp:0.064, color:'#00dd44', opacity:0.75, sw:58, blur:30, speed:0.000680, phase:2.95, waveFreq:1.48, gas:'O' },
-    // Teal/cyan ribbon — O/N boundary (wide horizontal band, Image 2)
-    { baseY:0.52, baseAmp:0.055, color:'#00ffcc', opacity:0.55, sw:46, blur:25, speed:0.000600, phase:1.82, waveFreq:1.32, gas:'N' },
-    // Electric blue — nitrogen lower curtain
-    { baseY:0.60, baseAmp:0.046, color:'#44aaff', opacity:0.38, sw:34, blur:20, speed:0.000520, phase:0.88, waveFreq:1.22, gas:'N' },
-    // Deep violet hem — N ions at very low altitude
-    { baseY:0.67, baseAmp:0.038, color:'#8855ff', opacity:0.26, sw:24, blur:16, speed:0.000440, phase:2.15, waveFreq:1.12, gas:'N' },
-  ];
-
-  const N_PTS = 12; // control points across width
-
-  // ── Utilities ────────────────────────────────────────────
-  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
-
-  function hexRGB(hex) {
-    const n = parseInt(hex.replace('#', ''), 16);
-    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
-  }
-
-  function lerpParams() {
-    for (const k in live) live[k] += (target[k] - live[k]) * 0.016;
-  }
-
-  // ── Catmull-Rom spline through pts ───────────────────────
-  // Call beginPath() before this, then stroke()/fill() after.
-  function catmullRom(pts) {
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = pts[Math.max(i - 1, 0)];
-      const p1 = pts[i];
-      const p2 = pts[i + 1];
-      const p3 = pts[Math.min(i + 2, pts.length - 1)];
-      const t  = 0.45;
-      const cp1x = p1.x + (p2.x - p0.x) * t / 3;
-      const cp1y = p1.y + (p2.y - p0.y) * t / 3;
-      const cp2x = p2.x - (p3.x - p1.x) * t / 3;
-      const cp2y = p2.y - (p3.y - p1.y) * t / 3;
-      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
-    }
-  }
-
-  // ── Control-point array for one band at time ms ─────────
-  function bandPoints(bd, ms) {
-    // altitude slider shifts the whole stack up/down
-    const altShift = (live.altitude - 0.5) * -0.14;
-    const pts = [];
-    for (let i = 0; i <= N_PTS; i++) {
-      const x = (i / N_PTS) * W;
-      const φ = bd.phase + i * bd.waveFreq;
-      // Primary slow sine + organic secondary ripple
-      const yFrac = (bd.baseY + altShift)
-                  + bd.baseAmp * Math.sin(ms * bd.speed + φ)
-                  + bd.baseAmp * 0.28 * Math.sin(ms * bd.speed * 1.76 + φ * 1.42 + 0.65);
-      // Clamp so bands never leave viewport
-      pts.push({ x, y: clamp(yFrac * H, 1, H - 1) });
-    }
-    return pts;
-  }
-
-  // ── Render one aurora band ───────────────────────────────
-  function drawBand(bd, ms) {
-    const sol   = live.solar / 5;
-    const latF  = clamp((live.latitude - 40) / 45, 0, 1);
-    const gas   = bd.gas === 'O' ? live.oxygen : live.nitrogen;
-    const intens = sol * latF;
-    if (intens < 0.05 || gas < 0.04) return;
-
-    const eff = clamp(bd.opacity * gas * intens * 1.75, 0, 1);
-    if (eff < 0.02) return;
-
-    const pts = bandPoints(bd, ms);
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.lineCap  = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = bd.color;
-
-    // Pass 1 — wide gaussian-blurred glow (ctx.filter for soft diffuse edge)
-    ctx.filter      = `blur(${bd.blur}px)`;
-    ctx.lineWidth   = bd.sw * 1.8;
-    ctx.globalAlpha = eff * 0.38;
-    ctx.beginPath(); catmullRom(pts); ctx.stroke();
-
-    // Pass 2 — medium body (lighter blur)
-    ctx.filter      = `blur(${Math.max(2, bd.blur * 0.30) | 0}px)`;
-    ctx.lineWidth   = bd.sw;
-    ctx.globalAlpha = eff * 0.60;
-    ctx.beginPath(); catmullRom(pts); ctx.stroke();
-
-    // Pass 3 — sharp bright core
-    ctx.filter      = 'blur(2px)';
-    ctx.lineWidth   = bd.sw * 0.18;
-    ctx.globalAlpha = eff * 0.92;
-    ctx.beginPath(); catmullRom(pts); ctx.stroke();
-
-    ctx.filter = 'none';
-    ctx.restore();
-
-    drawRays(bd, pts, eff, ms);
-  }
-
-  // ── Vertical ray fringes hanging downward from each band ─
-  function drawRays(bd, pts, eff, ms) {
-    const spacing = 58;
-    const n       = Math.ceil(W / spacing) + 1;
-    const rgb     = hexRGB(bd.color);
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.lineCap = 'round';
-
-    for (let i = 0; i < n; i++) {
-      const rx = i * spacing;
-      // Gentle sway so rays aren't perfectly vertical
-      const sway = 5 * Math.sin(ms * 0.00038 + i * 0.94);
-
-      // Interpolate Y along the smooth band at this x position
-      const tPos = clamp(rx / W, 0, 1);
-      const si   = Math.min(Math.floor(tPos * N_PTS), N_PTS - 1);
-      const sf   = tPos * N_PTS - si;
-      const ry   = pts[si].y + (si + 1 < pts.length ? (pts[si + 1].y - pts[si].y) * sf : 0);
-
-      // Ray length and opacity pulse gently over time
-      const rayLen  = 80 + 55 * Math.abs(Math.sin(ms * 0.00026 + i * 1.32));
-      const rOpacity = eff * (0.22 + 0.18 * Math.abs(Math.sin(ms * 0.00032 + i * 0.78)));
-
-      // Gradient: band color at root → transparent at tip
-      const grad = ctx.createLinearGradient(rx + sway, ry, rx + sway, ry + rayLen);
-      grad.addColorStop(0,    `rgba(${rgb},${clamp(rOpacity,        0, 1).toFixed(3)})`);
-      grad.addColorStop(0.55, `rgba(${rgb},${clamp(rOpacity * 0.38, 0, 1).toFixed(3)})`);
-      grad.addColorStop(1,    `rgba(${rgb},0)`);
-
-      ctx.beginPath();
-      ctx.moveTo(rx + sway, ry);
-      ctx.lineTo(rx + sway, ry + rayLen);
-      ctx.strokeStyle = grad;
-      ctx.lineWidth   = 1.0 + 0.9 * Math.abs(Math.sin(i * 1.8));
-      ctx.globalAlpha = 1;
-      ctx.stroke();
-    }
 
     ctx.restore();
   }
 
-  // ── Main animation loop ──────────────────────────────────
-  function loop(ms) {
-    lerpParams();
+  p.windowResized = () => {
+    p.resizeCanvas(window.innerWidth, window.innerHeight);
+    initCloud();
+  };
+};
 
-    // Solid black background
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, W, H);
-
-    drawStars();
-
-    for (const bd of BAND_DEFS) drawBand(bd, ms);
-
-    requestAnimationFrame(loop);
-  }
-
-  // Kick off
-  resizeCanvas();
-  requestAnimationFrame(loop);
-}
+new p5(sketch);
 
 // ── UI: solar buttons ──────────────────────────────────────
 let solarLevel = 1;
-const solBtns      = document.querySelectorAll('.sol-btn');
+const solBtns     = document.querySelectorAll('.sol-btn');
 const solarLabelEl = document.getElementById('solar-label');
 
 solBtns.forEach(btn => btn.addEventListener('click', () => {
@@ -588,9 +577,9 @@ solBtns.forEach(btn => btn.addEventListener('click', () => {
 });
 
 // ── UI: bake ───────────────────────────────────────────────
-const flashEl = document.getElementById('flash');
-const nameEl  = document.getElementById('aurora-name');
-const tipEl   = document.getElementById('science-tip');
+const flashEl  = document.getElementById('flash');
+const nameEl   = document.getElementById('aurora-name');
+const tipEl    = document.getElementById('science-tip');
 let ntTimer, tipTimer;
 
 document.getElementById('bake-btn').addEventListener('click', () => {
@@ -638,7 +627,7 @@ document.getElementById('proj-btn').addEventListener('click', () => {
 document.getElementById('proj-overlay-exit').addEventListener('click', exitProj);
 
 let lastTap = 0;
-document.getElementById('aurora-canvas').addEventListener('touchend', () => {
+document.getElementById('canvas-wrap').addEventListener('touchend', () => {
   const now = Date.now();
   if (now - lastTap < 380 && projOverlay.classList.contains('active')) exitProj();
   lastTap = now;
