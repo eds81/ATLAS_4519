@@ -330,307 +330,295 @@ function makeAuroraName(o, n, sol) {
 // ── p5 sketch ─────────────────────────────────────────────
 const sketch = (p) => {
   let t = 0;
-  let buf;            // aurora graphics buffer
-  let cloudW, cloudH, cloudX, cloudY;
-  // pre-baked mask shape vertices (updated each frame slowly)
-  const MASK_PTS = 72;
+  let buf;
+  let aW, aH, aX, aY; // aurora buffer dimensions
+  let stars = [];
 
   p.setup = () => {
     let cnv = p.createCanvas(window.innerWidth, window.innerHeight);
     cnv.parent('canvas-wrap');
     p.colorMode(p.HSB, 360, 100, 100, 100);
-    initCloud();
+    initBuf();
+    spawnStars();
   };
 
-  function initCloud() {
-    // Wide cloud with guaranteed margins so it never clips the screen edges
-    let margin = 16;
-    cloudW = Math.min(p.width - margin * 2, 1300);
-    cloudH = cloudW * 0.42;
-    cloudX = Math.max(margin, (p.width  - cloudW) / 2);
-    // Centre vertically in the top ~60% of screen, but never overflow bottom
-    cloudY = Math.max(margin, p.height * 0.06);
-    cloudY = Math.min(cloudY, p.height - cloudH - margin);
+  // Aurora buffer fills the full viewport — mask handles the edge fade
+  function initBuf() {
+    aW = p.width;
+    aH = p.height;
+    aX = 0;
+    aY = 0;
     if (buf) buf.remove();
-    buf = p.createGraphics(cloudW, cloudH);
+    buf = p.createGraphics(aW, aH);
     buf.colorMode(p.HSB, 360, 100, 100, 100);
+  }
+
+  // Small white star dots
+  function spawnStars() {
+    stars = [];
+    for (let i = 0; i < 260; i++) {
+      stars.push({
+        x: p.random(p.width),
+        y: p.random(p.height * 0.85),
+        r: p.random(0.3, 1.1),
+        b: p.random(72, 100),
+        phase: p.random(p.TWO_PI),
+        spd:   p.random(0.007, 0.022),
+      });
+    }
   }
 
   p.draw = () => {
     for (let k in live) live[k] += (target[k] - live[k]) * 0.016;
-
-    // Solid black
-    p.background(0);
-
-    drawAmbientGlow();
-    drawAuroraCloud();
+    p.background(0, 0, 0);
+    drawStars();
+    drawBaseHorizonGlow();
+    drawAurora();
     t++;
   };
 
-  // Soft luminous halo — translucent light projected through fog
-  function drawAmbientGlow() {
-    let sol = live.solar / 5;
-    let lat = p.map(live.latitude, 40, 85, 0.10, 1.0);
-    let intensity = sol * lat;
-    if (intensity < 0.04) return;
+  // ── Stars (small, sparse, visible through the aurora) ──────────────────
+  function drawStars() {
+    p.noStroke();
+    for (let s of stars) {
+      let tw = p.sin(t * s.spd + s.phase) * 9;
+      let a  = p.constrain(45 + tw, 0, 100);
+      p.fill(0, 0, s.b, a);
+      p.circle(s.x, s.y, s.r);
+    }
+  }
 
-    let cx = cloudX + cloudW * 0.5;
-    let cy = cloudY + cloudH * 0.58; // slightly lower — aurora hangs from top
-    // Pulse in sync with the aurora body
-    let pulse = 0.72 + 0.28 * p.sin(t * 0.007 + p.sin(t * 0.003) * 2.0);
+  // ── Base crimson/orange horizon glow (Image 1: fire-like base) ─────────
+  // Drawn directly on main canvas, behind the aurora buffer
+  function drawBaseHorizonGlow() {
+    let sol  = live.solar / 5;
+    let lat  = p.map(live.latitude, 40, 85, 0.10, 1.0);
+    let intens = sol * lat * live.oxygen;
+    if (intens < 0.04) return;
+
+    let pulse = 0.70 + 0.30 * p.sin(t * 0.006 + 0.5);
+    let baseY = p.height * 0.72;
+    let cx    = p.width  * 0.50;
 
     p.noStroke();
     p.blendMode(p.ADD);
 
-    // Emerald green — dominant aurora halo
-    let gOx = live.oxygen * intensity * pulse;
+    // Wide diffuse crimson base — "fire on the horizon"
     for (let i = 10; i >= 1; i--) {
       let r = i / 10;
-      let a = (1 - r) * (1 - r) * gOx * 18; // quadratic falloff = softer edge
-      p.fill(132, 80, 88, a);
-      p.ellipse(cx, cy, cloudW * (0.85 + (1-r)*0.55), cloudH * (0.8 + (1-r)*0.55));
+      let a = (1 - r) * (1 - r) * intens * pulse * 22;
+      // Colour shifts orange→crimson toward center
+      let h = p.lerp(20, 4, r);
+      p.fill(h, 88, 90, a);
+      p.ellipse(cx, baseY, p.width * (0.30 + (1 - r) * 0.90),
+                            p.height * (0.18 + (1 - r) * 0.55));
     }
 
-    // Hot pink / magenta crown glow (high solar + oxygen)
-    let mMag = live.oxygen * intensity * pulse * (sol > 0.3 ? 1 : sol / 0.3);
-    for (let i = 8; i >= 1; i--) {
-      let r = i / 8;
-      let a = (1 - r) * (1 - r) * mMag * 9;
-      p.fill(328, 78, 90, a);
-      p.ellipse(cx, cy - cloudH * 0.15, cloudW * (0.7 + (1-r)*0.45), cloudH * (0.6 + (1-r)*0.4));
-    }
-
-    // Deep violet / blue — nitrogen halo
-    let bNi = live.nitrogen * intensity * pulse;
-    for (let i = 9; i >= 1; i--) {
-      let r = i / 9;
-      let a = (1 - r) * (1 - r) * bNi * 13;
-      p.fill(268, 82, 88, a);
-      p.ellipse(cx, cy + cloudH * 0.05, cloudW * (0.75 + (1-r)*0.48), cloudH * (0.7 + (1-r)*0.48));
+    // Bright central hot-spot
+    for (let i = 6; i >= 1; i--) {
+      let r = i / 6;
+      let a = (1 - r) * intens * pulse * 14;
+      p.fill(28, 82, 95, a);
+      p.ellipse(cx, baseY, p.width * (0.12 + (1 - r) * 0.25),
+                            p.height * (0.06 + (1 - r) * 0.15));
     }
 
     p.blendMode(p.BLEND);
   }
 
-  // Draw the aurora into the buffer, mask to cloud blob, composite onto canvas
-  function drawAuroraCloud() {
-    let ox  = live.oxygen;
-    let ni  = live.nitrogen;
-    let sol = live.solar / 5;
-    let lat = p.map(live.latitude, 40, 85, 0.10, 1.0);
-    let alt = live.altitude;
-    let intensity = sol * lat;
+  // ── Main aurora ────────────────────────────────────────────────────────
+  function drawAurora() {
+    let ox    = live.oxygen;
+    let ni    = live.nitrogen;
+    let sol   = live.solar / 5;
+    let lat   = p.map(live.latitude, 40, 85, 0.10, 1.0);
+    let alt   = live.altitude;
+    let intens = sol * lat;
 
-    // Slow organic pulse — the aurora "breathes"
-    let pulse = 0.72 + 0.28 * p.sin(t * 0.007 + p.sin(t * 0.003) * 2.0);
+    // Slow organic breathing pulse
+    let pulse = 0.70 + 0.30 * p.sin(t * 0.007 + p.sin(t * 0.003) * 2.0);
 
     buf.clear();
 
-    if (intensity >= 0.03) {
-      let altShift = p.map(alt, 0, 1, 0.13, -0.06);
+    if (intens >= 0.025) {
+      // altShift raises/lowers the whole stack within the buffer
+      let altShift = p.map(alt, 0, 1, 0.10, -0.08);
 
-      // [ hue, sat, bri, baseY(0–1), maxH(0–1), weight, noiseSpeed, noiseXScale ]
-      // Longer nxScale wavelengths = bigger curtain rolls, more silk-like sweep
+      // ── Band table ─────────────────────────────────────────────────────
+      // [ hue, sat, bri, baseY(0–1 of aH), maxH(0–1 of aH),
+      //   weight, noiseSpeed, noiseXScale ]
+      //
+      // Aurora spans from ~5 % top to ~85 % down the screen.
+      // The bottom-most bands will be hidden by the horizon glow.
       const bands = [
-        // Deep crimson wisps — very high altitude O, rarest (needs strong storm)
-        [  2, 82, 88, 0.10+altShift, 0.08, ox*0.22*(sol>0.55?1:sol*1.8), 0.48, 0.0010],
-        // Hot pink / magenta crown — high O+N mix, electric edge colour
-        [328, 80, 92, 0.17+altShift, 0.10, (ox*0.4+ni*0.25)*(sol>0.28?1:sol*2.4), 0.58, 0.0012],
+        // Crimson wisps — very high altitude O (needs strong storm)
+        [  4, 84, 88, 0.06+altShift, 0.08, ox*0.20*(sol>0.5?1:sol*2),       0.45, 0.00090],
+        // Magenta/pink crown — high altitude O+N electric edge
+        [328, 82, 92, 0.11+altShift, 0.09, (ox*0.38+ni*0.20)*(sol>0.25?1:sol*3), 0.55, 0.00100],
         // Yellow-green upper fringe
-        [ 88, 92, 98, 0.24+altShift, 0.11, ox*0.62, 0.72, 0.0011],
-        // ── VIVID EMERALD GREEN — the iconic aurora colour (O at ~150 km) ──
-        [132, 100,100, 0.32+altShift, 0.24, ox,      1.00, 0.0010],
-        // Bright lime secondary (green band width)
-        [118, 95, 98, 0.44+altShift, 0.12, ox*0.55, 0.80, 0.0013],
-        // Teal/cyan — O/N boundary curtain base
-        [174, 90, 90, 0.53+altShift, 0.11, (ox*0.45+ni*0.55)*0.82, 0.82, 0.0014],
+        [ 86, 90, 98, 0.17+altShift, 0.11, ox*0.58, 0.68, 0.00095],
+        // ══ VIVID EMERALD GREEN — primary aurora (O at ~150 km) ══
+        [132, 100,100, 0.24+altShift, 0.26, ox,      1.00, 0.00085],
+        // Bright lime secondary fill
+        [118,  96, 98, 0.42+altShift, 0.14, ox*0.52, 0.76, 0.00110],
+        // ── Teal/cyan ribbon (Image 2: horizontal bands) ──
+        [172,  92, 92, 0.52+altShift, 0.13, (ox*0.42+ni*0.52)*0.85, 0.80, 0.00120],
         // Electric blue — nitrogen lower curtain
-        [220, 95, 92, 0.62+altShift, 0.10, ni,      0.88, 0.0013],
-        // Deep violet — N ions at very low altitude, bottom hem of curtain
-        [278, 88, 88, 0.70+altShift, 0.09, ni*0.75, 0.72, 0.0015],
+        [218,  95, 90, 0.62+altShift, 0.11, ni,      0.85, 0.00115],
+        // Deep violet hem — N ions at very low altitude
+        [276,  88, 86, 0.70+altShift, 0.10, ni*0.72, 0.70, 0.00130],
       ];
 
       buf.blendMode(p.ADD);
       buf.noStroke();
 
       for (let [h, s, b, by, mh, w, spd, nxs] of bands) {
-        let eff = w * intensity * pulse;
-        if (eff < 0.028) continue;
-        drawBand(h, s, b, by * cloudH, mh * cloudH, eff, spd, nxs);
+        let eff = w * intens * pulse;
+        if (eff < 0.025) continue;
+        drawBand(h, s, b, by * aH, mh * aH, eff, spd, nxs);
       }
 
       buf.blendMode(p.BLEND);
     }
 
-    applyCloudMask();
+    applyAuroraMask();
 
-    // Very subtle vertical float — like fabric swaying
-    let dy = Math.sin(t * 0.0013 + 1.2) * 4;
-    p.image(buf, cloudX, cloudY + dy);
+    // Subtle vertical float — fabric in a gentle breeze
+    let dy = Math.sin(t * 0.0013 + 1.2) * 5;
+    p.image(buf, aX, aY + dy);
   }
 
-  function drawBand(hue, sat, bri, baseY, maxH, weight, speed, nxScale) {
+  // ── Band renderer ──────────────────────────────────────────────────────
+  function drawBand(hue, sat, bri, baseY, maxH, weight, speed, nxs) {
     const STEP = 5;
+    const sweepT = t * 0.0026;
 
-    // Three passes: wide translucent glow → medium body → tight bright core
-    // Reduced sy values so bands stay within the cloud buffer vertically
+    // Three passes: wide luminous halo → body → tight bright core
     const passes = [
-      { sy: 1.6, sh: 1.3, af: 0.25 },
-      { sy: 0.85, sh: 0.90, af: 0.52 },
-      { sy: 0.36, sh: 0.45, af: 0.90 },
+      { sy: 1.85, sh: 1.55, af: 0.20 },
+      { sy: 0.92, sh: 1.00, af: 0.50 },
+      { sy: 0.38, sh: 0.46, af: 0.92 },
     ];
 
-    // Sweeping brightness ripple — wave of light moving across the curtain
-    let sweepSpeed = t * 0.0028;
-    let sweepWidth = cloudW * 0.28;
-
     for (let pass of passes) {
-      buf.beginShape();
       let topPts = [];
-
-      for (let x = -STEP * 2; x <= cloudW + STEP * 2; x += STEP) {
-        // Primary large roll (silk curtain sweep)
-        let n  = p.noise(x * nxScale,        t * speed * 0.001);
-        // Secondary ripple (smaller undulation on top of the big roll)
-        let n2 = p.noise(x * nxScale * 3.5 + 300, t * speed * 0.0012);
-        // Slow lateral drift of the whole band
-        let n3 = p.noise(x * nxScale * 0.4 + 900, t * speed * 0.0005);
-
+      for (let x = -STEP * 2; x <= aW + STEP * 2; x += STEP) {
+        // Three noise layers: grand roll + fine ripple + very slow drift
+        let n1 = p.noise(x * nxs,            t * speed * 0.001);
+        let n2 = p.noise(x * nxs * 3.2 + 400, t * speed * 0.0014);
+        let n3 = p.noise(x * nxs * 0.35 + 900, t * speed * 0.00045);
         let y = baseY
-              + (n  - 0.5) * maxH * 2.20 * pass.sy   // big roll
-              + (n2 - 0.5) * maxH * 0.45 * pass.sy   // ripple
-              + (n3 - 0.5) * maxH * 0.18;             // gentle drift (same for all passes)
+              + (n1 - 0.5) * maxH * 2.50 * pass.sy
+              + (n2 - 0.5) * maxH * 0.48 * pass.sy
+              + (n3 - 0.5) * maxH * 0.16;
         topPts.push([x, y]);
       }
 
-      // Sweeping brightness modulation per vertex
-      for (let i = 0; i < topPts.length; i++) {
-        let [x, y] = topPts[i];
-        // Two overlapping sweep waves travelling in opposite directions
-        let sw  = Math.max(0, Math.sin((x / cloudW) * Math.PI * 2 - sweepSpeed));
-        let sw2 = Math.max(0, Math.sin((x / cloudW) * Math.PI * 1.3 + sweepSpeed * 0.7 + 1.0));
-        let sweepBoost = 1.0 + 0.40 * (sw * 0.6 + sw2 * 0.4);
-        let alpha = weight * 58 * pass.af * sweepBoost;
-        buf.fill(hue, sat, bri, alpha);
-        // We can't change fill mid-shape in p5, so accumulate via curveVertex only
-        buf.curveVertex(x, y);
-      }
+      // Sweeping brightness wave (aurora ripple effect)
+      let sw1 = 0.5 + 0.5 * Math.sin((topPts[0][0] / aW) * Math.PI * 1.8 - sweepT);
+      let sw2 = 0.5 + 0.5 * Math.sin((topPts[0][0] / aW) * Math.PI * 1.2 + sweepT * 0.65 + 1.3);
+      let baseAlpha = weight * 62 * pass.af * (1 + 0.35 * (sw1 * 0.55 + sw2 * 0.45));
 
-      // Bottom edge — slightly less wavy, gives the curtain a hem
-      for (let i = topPts.length - 1; i >= 0; i--) {
-        let [x, y] = topPts[i];
-        let nb = p.noise(x * nxScale + 600, t * speed * 0.0007 + 40);
-        buf.curveVertex(x, y + maxH * pass.sh + (nb - 0.5) * maxH * 0.28);
-      }
-      buf.endShape(p.CLOSE);
-
-      // Re-draw with uniform fill (fill mid-shape isn't possible; this pass uses one alpha)
-      // Use average sweep boost estimate × base alpha for the filled shape above
-      let avgAlpha = weight * 58 * pass.af * 1.18; // slightly boosted for vibrancy
-      buf.fill(hue, sat, bri, avgAlpha * 0.35);    // additive secondary pass at lower alpha
+      buf.fill(hue, sat, bri, baseAlpha);
       buf.beginShape();
       for (let [x, y] of topPts) buf.curveVertex(x, y);
-      for (let i = topPts.length-1; i>=0; i--) {
+      for (let i = topPts.length - 1; i >= 0; i--) {
         let [x, y] = topPts[i];
-        let nb = p.noise(x * nxScale + 600, t * speed * 0.0007 + 40);
-        buf.curveVertex(x, y + maxH * pass.sh + (nb-0.5) * maxH * 0.28);
+        let nb = p.noise(x * nxs + 700, t * speed * 0.0008 + 50);
+        buf.curveVertex(x, y + maxH * pass.sh + (nb - 0.5) * maxH * 0.30);
       }
       buf.endShape(p.CLOSE);
     }
 
-    // ── CURTAIN RAYS — vertical streaks radiating from the base arc ──
-    // Present on all non-trivial bands; intensity scales with band weight.
-    {
-      let rayStep = 4;
-      // "Fold noise" at coarse scale groups rays into curtain bundles
-      for (let x = 0; x < cloudW; x += rayStep) {
-        // Coarse fold structure — areas of dense bright rays
-        let fold = p.noise(x * 0.006 + hue * 0.05, t * speed * 0.0008);
-        // Fine ray noise
-        let rn   = p.noise(x * 0.014 + hue * 0.12, t * speed * 0.0022);
+    // ── CURTAIN RAYS with canvas shadow glow ────────────────────────────
+    // Use the raw hue in 0-360° for the CSS shadow color
+    let hDeg = hue;
+    buf.drawingContext.shadowColor  = `hsl(${hDeg},100%,65%)`;
+    buf.drawingContext.shadowBlur   = 10;
 
-        let foldBoost = p.map(fold, 0.35, 0.75, 0.0, 1.0, true); // 0 outside folds
-        let rayStrength = rn * foldBoost;
-        if (rayStrength < 0.18) continue;
+    for (let x = 0; x < aW; x += 4) {
+      // Coarse fold noise groups rays into curtain bundles
+      let fold = p.noise(x * 0.0048 + hue * 0.04, t * speed * 0.00075);
+      let rn   = p.noise(x * 0.012  + hue * 0.11, t * speed * 0.0020);
+      let foldBoost  = p.map(fold, 0.28, 0.70, 0, 1, true);
+      let rayStrength = rn * foldBoost;
+      if (rayStrength < 0.14) continue;
 
-        // Ray base position follows the same wave as the main body
-        let yn   = p.noise(x * nxScale, t * speed * 0.001);
-        let n2   = p.noise(x * nxScale * 3.5 + 300, t * speed * 0.0012);
-        let rayY = baseY
-                 + (yn  - 0.5) * maxH * 1.8
-                 + (n2  - 0.5) * maxH * 0.35;
+      // Ray base tracks the main band wave
+      let yn  = p.noise(x * nxs, t * speed * 0.001);
+      let yn2 = p.noise(x * nxs * 3.2 + 400, t * speed * 0.0014);
+      let rayY = baseY
+               + (yn  - 0.5) * maxH * 2.0
+               + (yn2 - 0.5) * maxH * 0.38;
 
-        let rayH = rayStrength * maxH * weight * 1.35;
-        let rayW = p.map(foldBoost, 0, 1, 1.0, 2.2); // fold centres get thicker rays
+      // Taller rays → more sky coverage (Image 3)
+      let rayH = rayStrength * maxH * weight * 1.80;
+      let rayW = p.map(foldBoost, 0, 1, 0.9, 2.4);
+      let baseA = weight * 80 * rayStrength;
 
-        // Gradient ray: bright at base, fade toward tip (silk-light quality)
-        let baseA = weight * 68 * rayStrength;
-
-        // Bottom segment — full brightness
-        buf.strokeWeight(rayW);
-        buf.stroke(hue, sat, 100, baseA * 0.95);
-        buf.line(x, rayY, x, rayY - rayH * 0.45);
-
-        // Mid segment — softer
-        buf.stroke(hue, sat * 0.8, 100, baseA * 0.50);
-        buf.line(x, rayY - rayH * 0.45, x, rayY - rayH * 0.75);
-
-        // Tip — faint wisp
-        buf.stroke(hue, sat * 0.5, 100, baseA * 0.18);
-        buf.line(x, rayY - rayH * 0.75, x, rayY - rayH);
-      }
-      buf.noStroke();
+      buf.strokeWeight(rayW);
+      // Bright base segment
+      buf.stroke(hue, sat, 100, baseA * 0.92);
+      buf.line(x, rayY, x, rayY - rayH * 0.40);
+      // Mid fade
+      buf.stroke(hue, sat * 0.75, 100, baseA * 0.46);
+      buf.line(x, rayY - rayH * 0.40, x, rayY - rayH * 0.75);
+      // Wispy tip
+      buf.stroke(hue, sat * 0.40, 100, baseA * 0.14);
+      buf.line(x, rayY - rayH * 0.75, x, rayY - rayH);
     }
+
+    // Reset shadow so it doesn't bleed into the mask step
+    buf.drawingContext.shadowBlur  = 0;
+    buf.drawingContext.shadowColor = 'transparent';
+    buf.noStroke();
   }
 
-  // Organic noise-warped cloud mask via destination-in layering
-  function applyCloudMask() {
+  // ── Sky mask — fades at sides and bottom; open at top ──────────────────
+  // Uses three linear gradients via destination-in so the aurora feels like
+  // it fills a real sky rather than a blob.
+  function applyAuroraMask() {
     let ctx = buf.drawingContext;
-    let cx  = cloudW * 0.5;
-    let cy  = cloudH * 0.5;
-    let rx  = cloudW * 0.49;
-    let ry  = cloudH * 0.48;
-
     ctx.save();
     ctx.globalCompositeOperation = 'destination-in';
 
-    // Layered semi-transparent rings — wider opaque core so waves show fully
-    const layers = [
-      { s: 0.68, a: 1.00 },
-      { s: 0.78, a: 0.94 },
-      { s: 0.87, a: 0.78 },
-      { s: 0.93, a: 0.52 },
-      { s: 0.98, a: 0.26 },
-      { s: 1.02, a: 0.09 },
-      { s: 1.06, a: 0.02 },
-    ];
+    // Left fade (0 → 7 %)
+    let gL = ctx.createLinearGradient(0, 0, aW * 0.09, 0);
+    gL.addColorStop(0,   'rgba(0,0,0,0)');
+    gL.addColorStop(1,   'rgba(0,0,0,1)');
+    ctx.fillStyle = gL;
+    ctx.fillRect(0, 0, aW * 0.09, aH);
 
-    for (let lyr of layers) {
-      ctx.beginPath();
-      for (let i = 0; i <= MASK_PTS; i++) {
-        let angle = (i / MASK_PTS) * Math.PI * 2;
-        // noise warp — slowly morphing organic edge
-        let nv = p.noise(
-          Math.cos(angle) * 2.0 + 80,
-          Math.sin(angle) * 2.0 + 80,
-          t * 0.0009
-        );
-        let wobble = 1 + (nv - 0.5) * 0.20;
-        let x = cx + Math.cos(angle) * rx * lyr.s * wobble;
-        let y = cy + Math.sin(angle) * ry * lyr.s * wobble;
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      ctx.closePath();
-      ctx.fillStyle = `rgba(0,0,0,${lyr.a})`;
-      ctx.fill();
-    }
+    // Right fade (93 → 100 %)
+    let gR = ctx.createLinearGradient(aW * 0.91, 0, aW, 0);
+    gR.addColorStop(0,   'rgba(0,0,0,1)');
+    gR.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = gR;
+    ctx.fillRect(aW * 0.91, 0, aW * 0.09, aH);
+
+    // Opaque centre column (ensures no double-darken from the side fades)
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    ctx.fillRect(aW * 0.09, 0, aW * 0.82, aH * 0.78);
+
+    // Bottom fade (72 → 100 %) — aurora dissolves into darkness / horizon glow
+    let gB = ctx.createLinearGradient(0, aH * 0.70, 0, aH);
+    gB.addColorStop(0,   'rgba(0,0,0,1)');
+    gB.addColorStop(0.5, 'rgba(0,0,0,0.55)');
+    gB.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = gB;
+    ctx.fillRect(0, aH * 0.70, aW, aH * 0.30);
+
+    // Top — fully opaque strip so aurora reaches screen top
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    ctx.fillRect(aW * 0.09, 0, aW * 0.82, aH * 0.04);
 
     ctx.restore();
   }
 
   p.windowResized = () => {
     p.resizeCanvas(window.innerWidth, window.innerHeight);
-    initCloud();
+    initBuf();
+    spawnStars();
   };
 };
 
