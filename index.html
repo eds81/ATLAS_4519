@@ -263,50 +263,52 @@ function drawBlob(x, y, rHead, rPerp, angle, r, g, b, eff, blurPx) {
 
 // ── draw aurora orb ───────────────────────────────────────
 function drawAurora(t) {
-  const sol    = live.solar / 5;
-  const latF   = Math.max(0, Math.min(1, (live.latitude - 40) / 45));
-  const intens = sol * latF;
-  if (intens < 0.02) return;
+  const solNorm = (live.solar - 1) / 4;            // 0 → 1 as Kp 1→5
+  const latF    = Math.max(0.10, Math.min(1, (live.latitude - 40) / 45));
+  // Base aurora always visible; solar & latitude multiply it upward
+  const intens  = (0.28 + solNorm * 0.72) * latF;
 
-  const breath = 0.80 + 0.20 * Math.sin(t * 0.001570); // ~4s pulse
+  const breath   = 0.82 + 0.18 * Math.sin(t * 0.001570); // ~4s pulse
   const { cx, cy } = orbCenter(t);
   const { vx, vy } = orbVelocity(t);
-  const angle = Math.atan2(vy, vx); // movement direction angle
+  const angle    = Math.atan2(vy, vx);
   const altScale = 0.85 + live.altitude * 0.30;
+  // Higher solar = slightly larger orb
+  const solarSize = 0.85 + solNorm * 0.30;
 
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
 
-  // ── tail segments (drawn first, behind body) ────────────
-  for (const td of TAIL_DEFS) {
+  // ── tail: each segment unlocks at a higher Kp level ─────
+  // TAIL_DEFS[0] at Kp≥2, [1] at Kp≥3, [2] at Kp≥4, [3] at Kp≥5
+  for (let i = 0; i < TAIL_DEFS.length; i++) {
+    if (live.solar < i + 2) continue;              // gate by solar level
+    const td = TAIL_DEFS[i];
     const gasScale = td.gas === 'O' ? live.oxygen : live.nitrogen;
     const eff = td.opacity * gasScale * intens * breath;
-    // Position tail opposite to movement direction
     const tx = cx - vx * td.dist;
     const ty = cy - vy * td.dist;
-    drawBlob(tx, ty, td.rHead * altScale, td.rPerp * altScale,
+    drawBlob(tx, ty, td.rHead * altScale * solarSize, td.rPerp * altScale * solarSize,
              angle, td.r, td.g, td.b, eff, td.blur);
   }
 
   // ── main body blobs ─────────────────────────────────────
   for (const bd of BLOB_DEFS) {
+    // Oxygen drives green & red; nitrogen drives blue & purple
     const gasScale = bd.gas === 'O' ? live.oxygen : live.nitrogen;
     const eff = bd.baseOpacity * gasScale * intens * breath;
     if (eff < 0.01) continue;
 
-    // Local drift within the orb's rotated frame
     const driftAlong = bd.ox * Math.sin(t * bd.spd + bd.ph);
     const driftPerp  = bd.oy * Math.cos(t * bd.spd + bd.ph);
     const localX = cx + vx * driftAlong - vy * driftPerp;
     const localY = cy + vy * driftAlong + vx * driftPerp;
 
-    const rH = bd.rHead * altScale;
-    const rP = bd.rPerp * altScale;
+    const rH = bd.rHead * altScale * solarSize;
+    const rP = bd.rPerp  * altScale * solarSize;
 
-    // Wide glow pass
-    drawBlob(localX, localY, rH, rP, angle, bd.r, bd.g, bd.b, eff * 0.45, 55);
-    // Bright inner pass
-    drawBlob(localX, localY, rH * 0.48, rP * 0.48, angle, bd.r, bd.g, bd.b, eff * 0.80, 18);
+    drawBlob(localX, localY, rH,        rP,        angle, bd.r, bd.g, bd.b, eff * 0.45, 55);
+    drawBlob(localX, localY, rH * 0.48, rP * 0.48, angle, bd.r, bd.g, bd.b, eff * 0.82, 18);
   }
 
   ctx.restore();
