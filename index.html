@@ -227,21 +227,24 @@ function orbVelocity(aur, t) {
 // ── blob definitions ──────────────────────────────────────
 // rHead = radius along movement axis, rPerp = radius perpendicular
 // ox/oy = local drift offset (in the orb's rotated frame)
+// flickF/flickP — each blob has its own slow flicker so color distribution is random-feeling
 const BLOB_DEFS = [
   // Core bright green — oxygen dominant
-  { r:0,   g:255, b:102,  rHead:260, rPerp:110, ox:0,    oy:0,    spd:0.000320, ph:0.00, baseOpacity:0.90, gas:'O' },
+  { r:0,   g:255, b:102,  rHead:260, rPerp:110, ox:0,    oy:0,    spd:0.000320, ph:0.00, baseOpacity:0.90, gas:'O', flickF:0.000480, flickP:0.00 },
   // Secondary vivid green
-  { r:30,  g:255, b:80,   rHead:200, rPerp:85,  ox:50,   oy:-35,  spd:0.000270, ph:1.10, baseOpacity:0.75, gas:'O' },
+  { r:30,  g:255, b:80,   rHead:200, rPerp:85,  ox:50,   oy:-35,  spd:0.000270, ph:1.10, baseOpacity:0.75, gas:'O', flickF:0.000370, flickP:2.10 },
   // Teal/cyan mid layer
-  { r:0,   g:255, b:200,  rHead:220, rPerp:90,  ox:-60,  oy:25,   spd:0.000210, ph:2.30, baseOpacity:0.60, gas:'O' },
+  { r:0,   g:255, b:200,  rHead:220, rPerp:90,  ox:-60,  oy:25,   spd:0.000210, ph:2.30, baseOpacity:0.60, gas:'O', flickF:0.000290, flickP:1.40 },
   // Warm red — high altitude oxygen
-  { r:255, g:60,  b:80,   rHead:150, rPerp:65,  ox:70,   oy:50,   spd:0.000350, ph:0.80, baseOpacity:0.28, gas:'O' },
-  // Electric blue — nitrogen
-  { r:40,  g:120, b:255,  rHead:200, rPerp:80,  ox:-40,  oy:-50,  spd:0.000290, ph:3.50, baseOpacity:0.50, gas:'N' },
-  // Deep magenta — nitrogen outer wisp
-  { r:180, g:0,   b:255,  rHead:175, rPerp:70,  ox:80,   oy:-15,  spd:0.000240, ph:1.80, baseOpacity:0.38, gas:'N' },
-  // Violet fringe
-  { r:120, g:40,  b:255,  rHead:140, rPerp:58,  ox:-70,  oy:45,   spd:0.000310, ph:2.90, baseOpacity:0.28, gas:'N' },
+  { r:255, g:60,  b:80,   rHead:150, rPerp:65,  ox:70,   oy:50,   spd:0.000350, ph:0.80, baseOpacity:0.32, gas:'O', flickF:0.000610, flickP:3.80 },
+  // Electric blue — nitrogen (boosted)
+  { r:40,  g:100, b:255,  rHead:210, rPerp:85,  ox:-40,  oy:-50,  spd:0.000290, ph:3.50, baseOpacity:0.82, gas:'N', flickF:0.000540, flickP:0.70 },
+  // Deep magenta — nitrogen (boosted)
+  { r:200, g:0,   b:255,  rHead:190, rPerp:78,  ox:80,   oy:-15,  spd:0.000240, ph:1.80, baseOpacity:0.72, gas:'N', flickF:0.000430, flickP:2.50 },
+  // Violet fringe — nitrogen (boosted)
+  { r:140, g:30,  b:255,  rHead:160, rPerp:65,  ox:-70,  oy:45,   spd:0.000310, ph:2.90, baseOpacity:0.65, gas:'N', flickF:0.000350, flickP:1.20 },
+  // Soft lavender edge — adds variation
+  { r:180, g:80,  b:255,  rHead:130, rPerp:52,  ox:30,   oy:-70,  spd:0.000260, ph:4.10, baseOpacity:0.55, gas:'N', flickF:0.000620, flickP:3.30 },
 ];
 
 // Tail segments — each has perpendicular wave params for organic flutter
@@ -300,10 +303,13 @@ function drawOneAurora(aur, t, intens, altScale) {
     drawBlob(tx, ty, td.rHead * altScale, td.rPerp * altScale, swayAngle, td.r, td.g, td.b, eff, td.blur);
   }
 
-  // Body blobs
+  // Body blobs — each flickers independently for organic colour variation
   for (const bd of BLOB_DEFS) {
     const gasScale = bd.gas === 'O' ? live.oxygen : live.nitrogen;
-    const eff = bd.baseOpacity * gasScale * intens * breath;
+    // Per-blob flicker: two layered sines with unique frequencies → non-repeating pulse
+    const flicker = 0.45 + 0.35 * Math.sin(t * bd.flickF + bd.flickP + aur.bx * 7.3)
+                         + 0.20 * Math.sin(t * bd.flickF * 1.61 + bd.flickP * 1.4 + 0.9);
+    const eff = bd.baseOpacity * gasScale * intens * breath * Math.max(0, flicker);
     if (eff < 0.01) continue;
     const driftAlong = bd.ox * Math.sin(t * bd.spd + bd.ph + aur.bx * 5);
     const driftPerp  = bd.oy * Math.cos(t * bd.spd + bd.ph + aur.by * 5);
