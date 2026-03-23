@@ -60,6 +60,10 @@
 
     #bake-btn { width:100%; padding:14px; background:linear-gradient(135deg,#071f14 0%,#0d3d23 100%); border:1px solid rgba(0,255,120,0.3); border-radius:11px; color:#7affb0; font-size:1.02rem; letter-spacing:0.08em; font-family:inherit; cursor:pointer; text-shadow:0 0 11px rgba(0,255,100,0.35); box-shadow:0 0 22px rgba(0,180,80,0.07); transition:all 0.18s; }
     #bake-btn:active { background:linear-gradient(135deg,#0d3d23 0%,#175e36 100%); box-shadow:0 0 32px rgba(0,255,100,0.22); }
+    .btn-row { display:flex; gap:10px; }
+    .btn-row #bake-btn { flex:1; }
+    #print-btn { padding:14px 18px; background:linear-gradient(135deg,#0d0a1e 0%,#1a0e3a 100%); border:1px solid rgba(153,85,255,0.35); border-radius:11px; color:rgba(190,150,255,0.88); font-size:0.82rem; letter-spacing:0.07em; font-family:inherit; cursor:pointer; white-space:nowrap; text-shadow:0 0 10px rgba(130,80,255,0.3); box-shadow:0 0 18px rgba(100,50,200,0.06); transition:all 0.18s; }
+    #print-btn:active { background:linear-gradient(135deg,#1a0e3a 0%,#2a1560 100%); box-shadow:0 0 28px rgba(150,80,255,0.22); }
 
     #proj-overlay { position:fixed; inset:0; z-index:50; display:none; align-items:flex-end; justify-content:center; padding-bottom:16px; }
     #proj-overlay.active { display:flex; }
@@ -126,7 +130,10 @@
     </div>
   </div>
 
-  <button id="bake-btn">&#127859; Bake My Aurora!</button>
+  <div class="btn-row">
+    <button id="bake-btn">&#127859; Bake My Aurora!</button>
+    <button id="print-btn">&#128438; Print Recipe Card</button>
+  </div>
 </div>
 
 <div id="proj-overlay">
@@ -432,6 +439,100 @@ document.getElementById('bake-btn').addEventListener('click', () => {
     tipEl.classList.add('show');
     tipTimer = setTimeout(() => tipEl.classList.remove('show'), 9000);
   }, 550);
+});
+
+// ── UI: print recipe card ─────────────────────────────────
+document.getElementById('print-btn').addEventListener('click', () => {
+  const oxyPct  = Math.round(live.oxygen * 100);
+  const nitPct  = Math.round(live.nitrogen * 100);
+  const lat     = Math.round(live.latitude);
+  const altPct  = Math.round(live.altitude * 100);
+  const altLabel = altPct > 75 ? 'High (~280 km)' : altPct > 45 ? 'Mid (~150 km)' : 'Low (~100 km)';
+  const solar    = Math.round(live.solar);
+  const solarDesc = solarLabels[solar] || 'Quiet';
+  const currentName = (nameEl.textContent && nameEl.textContent.trim())
+    ? nameEl.textContent.trim()
+    : makeAuroraName(live.oxygen, live.nitrogen, solar);
+  const imgData = canvas.toDataURL('image/png');
+
+  const oxyDesc = oxyPct >= 70 ? 'vibrant green aurora (oxygen atoms at ~150 km altitude)'
+                : oxyPct >= 40 ? 'moderate green tones' : 'subtle green hints';
+  const nitDesc = nitPct >= 65 ? 'rich blue and purple hues (nitrogen at ~100 km)'
+                : nitPct >= 35 ? 'moderate blue and purple blends' : 'faint nitrogen tones';
+  const latDesc = lat >= 70 ? 'deep inside the auroral oval — prime viewing country'
+                : lat >= 60 ? 'within the auroral zone — aurora visible most clear nights'
+                : 'southern auroral fringe — only visible during strong storms';
+  const altDesc = altPct > 75 ? 'large, diffuse curtains high in the atmosphere'
+                : altPct > 45 ? 'balanced size and brightness at mid altitude'
+                : 'compact, intense aurora low in the sky';
+
+  const scienceFacts = [];
+  if (oxyPct >= 60) scienceFacts.push('Green aurora (like yours) is the most common aurora color — oxygen atoms at ~150 km emit that signature glow.');
+  if (oxyPct >= 55 && solar >= 4) scienceFacts.push('At high oxygen and strong solar activity, rare red aurora can crown the very top of the curtain at ~300 km.');
+  if (nitPct >= 45) scienceFacts.push('The blue and purple in your aurora come from nitrogen molecules excited at ~100 km altitude.');
+  if (solar >= 4) scienceFacts.push('At Kp ' + solar + ', this aurora could be seen as far south as the northern US and central Europe!');
+  if (lat >= 65) scienceFacts.push(lat + '\u00b0N puts you inside the auroral oval — where displays occur almost every clear, dark night during active periods.');
+  if (scienceFacts.length === 0) scienceFacts.push('Aurora forms when charged solar wind particles spiral along Earth\u2019s magnetic field lines toward the poles, colliding with gas atoms to release light.');
+
+  const steps = [
+    'Open the Recipe panel at the bottom of the screen.',
+    'Set <strong>Solar Storm to Kp ' + solar + ' (' + solarDesc + ')</strong> — controls aurora intensity and how many curtains fill the sky.',
+    'Slide <strong>Oxygen to ' + oxyPct + '%</strong> — producing ' + oxyDesc + '.',
+    'Slide <strong>Nitrogen to ' + nitPct + '%</strong> — adding ' + nitDesc + '.',
+    'Set <strong>Latitude to ' + lat + '\u00b0N</strong> (' + latDesc + ').',
+    'Set <strong>Altitude to ' + altLabel + '</strong> — creating ' + altDesc + '.',
+    'Press <strong>Bake My Aurora!</strong> to lock in your recipe.',
+  ].map((s, i) => '<li><span class="sn">' + (i + 1) + '</span><span>' + s + '</span></li>').join('');
+
+  const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Aurora Recipe Card</title><style>'
+    + '*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }'
+    + 'body { background:#000; color:#b0e8cc; font-family:Georgia,serif; padding:24px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
+    + '.card { max-width:680px; margin:0 auto; border:1px solid rgba(0,255,120,0.25); border-radius:14px; overflow:hidden; }'
+    + '.aurora-img { width:100%; display:block; max-height:300px; object-fit:cover; }'
+    + '.body { padding:24px 28px; }'
+    + '.kicker { font-size:0.62rem; letter-spacing:0.22em; text-transform:uppercase; color:rgba(0,255,120,0.55); margin-bottom:5px; }'
+    + '.aname { font-size:1.7rem; letter-spacing:0.06em; color:#7affb0; text-shadow:0 0 20px rgba(0,255,100,0.45); margin-bottom:22px; }'
+    + '.sh { font-size:0.6rem; letter-spacing:0.2em; text-transform:uppercase; color:rgba(0,255,120,0.45); margin:18px 0 10px; }'
+    + '.grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:4px; }'
+    + '.ri { border:1px solid rgba(80,200,140,0.18); border-radius:9px; padding:10px 4px; text-align:center; }'
+    + '.rico { font-size:1.3rem; margin-bottom:3px; }'
+    + '.ril { font-size:0.52rem; letter-spacing:0.07em; text-transform:uppercase; color:rgba(140,210,175,0.6); margin-bottom:4px; }'
+    + '.riv { font-size:0.85rem; }'
+    + '.rivs { font-size:0.6rem; color:rgba(255,200,60,0.7); margin-top:2px; }'
+    + 'ol.steps { list-style:none; }'
+    + 'ol.steps li { display:flex; align-items:flex-start; gap:10px; padding:8px 0; border-bottom:1px solid rgba(80,200,140,0.1); font-size:0.8rem; line-height:1.55; }'
+    + '.sn { min-width:22px; height:22px; border-radius:50%; background:rgba(0,255,120,0.12); border:1px solid rgba(0,255,120,0.3); color:rgba(0,255,120,0.85); display:flex; align-items:center; justify-content:center; font-size:0.65rem; flex-shrink:0; margin-top:2px; }'
+    + '.science { background:rgba(0,30,15,0.6); border:1px solid rgba(0,255,120,0.12); border-radius:9px; padding:14px 16px; margin-top:18px; font-size:0.72rem; line-height:1.65; color:rgba(140,210,175,0.78); }'
+    + '.science strong { color:rgba(0,255,120,0.75); font-weight:normal; }'
+    + '.footer { text-align:center; font-size:0.58rem; letter-spacing:0.14em; color:rgba(70,130,90,0.38); margin-top:20px; padding-top:12px; border-top:1px solid rgba(0,255,120,0.08); }'
+    + '@media print { body { background:#000 !important; } }'
+    + '</style></head><body>'
+    + '<div class="card">'
+    + '<img class="aurora-img" src="' + imgData + '" alt="Your Aurora">'
+    + '<div class="body">'
+    + '<div class="kicker">Aurora A La Carte \u2014 Recipe Card</div>'
+    + '<div class="aname">' + currentName + '</div>'
+    + '<div class="sh">Ingredients</div>'
+    + '<div class="grid">'
+    + '<div class="ri"><div class="rico">\u2600\uFE0F</div><div class="ril">Solar Storm</div><div class="riv">Kp ' + solar + '</div><div class="rivs">' + solarDesc + '</div></div>'
+    + '<div class="ri"><div class="rico" style="color:#44ff88;font-weight:bold;font-size:1.1rem;">O</div><div class="ril">Oxygen</div><div class="riv">' + oxyPct + '%</div></div>'
+    + '<div class="ri"><div class="rico" style="color:#9955ff;font-weight:bold;font-size:1.1rem;">N</div><div class="ril">Nitrogen</div><div class="riv">' + nitPct + '%</div></div>'
+    + '<div class="ri"><div class="rico">\uD83C\uDF0D</div><div class="ril">Latitude</div><div class="riv">' + lat + '\u00b0N</div></div>'
+    + '<div class="ri"><div class="rico">\uD83C\uDF19</div><div class="ril">Altitude</div><div class="riv" style="font-size:0.72rem;">' + altLabel + '</div></div>'
+    + '</div>'
+    + '<div class="sh">Steps to Recreate</div>'
+    + '<ol class="steps">' + steps + '</ol>'
+    + '<div class="science"><strong>Science corner:</strong> ' + scienceFacts.slice(0, 2).join(' ') + '</div>'
+    + '<div class="footer">Aurora A La Carte \u2014 Build your own northern lights</div>'
+    + '</div></div>'
+    + '<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>'
+    + '</body></html>';
+
+  const pw = window.open('', '_blank', 'width=760,height=900');
+  if (!pw) { alert('Please allow pop-ups to print the recipe card.'); return; }
+  pw.document.open();
+  pw.document.write(html);
+  pw.document.close();
 });
 
 // ── UI: panel toggle ──────────────────────────────────────
