@@ -71,7 +71,6 @@
   </style>
 </head>
 <body>
-
 <canvas id="c"></canvas>
 <div id="flash"></div>
 <div id="aurora-name"></div>
@@ -561,6 +560,29 @@ canvas.addEventListener('touchend', () => {
   lastTap = now;
 });
 function exitProj() { projOverlay.classList.remove('active'); tabBtn.style.display = ''; }
+</script>
+<script>
+const ws = new WebSocket("ws://10.0.0.76:81");
+
+ws.onopen = () => {
+  console.log("ESP32 CONNECTED");
+};
+
+ws.onmessage = (event) => {
+  console.log("RAW:", event.data);
+
+  try {
+    const data = JSON.parse(event.data);
+
+    if (data.oxygen !== undefined) {
+      // convert 0–100 → 0–1 (your system uses 0–1)
+      target.oxygen = data.oxygen / 100;
+    }
+
+  } catch (e) {
+    console.log("bad json:", event.data);
+  }
+};
 </script>
 </body>
 </html>
