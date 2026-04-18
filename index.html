@@ -561,28 +561,60 @@ canvas.addEventListener('touchend', () => {
 });
 function exitProj() { projOverlay.classList.remove('active'); tabBtn.style.display = ''; }
 </script>
+<!-- ===== UPDATE YOUR WEBSOCKET HANDLER ===== -->
 <script>
-const ws = new WebSocket("ws://10.0.0.76:81");
-
-ws.onopen = () => {
-  console.log("ESP32 CONNECTED");
-};
-
-ws.onmessage = (event) => {
-  console.log("RAW:", event.data);
-
-  try {
-    const data = JSON.parse(event.data);
-
-    if (data.oxygen !== undefined) {
-      // convert 0–100 → 0–1 (your system uses 0–1)
-      target.oxygen = data.oxygen / 100;
+  const ws = new WebSocket("ws://192.168.0.116:81");
+  
+  ws.onopen = () => {
+    console.log("ESP32 CONNECTED");
+  };
+  
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+  
+      if (data.oxygen !== undefined) {
+        target.oxygen = data.oxygen / 100;
+      }
+  
+      if (data.nitrogen !== undefined) {
+        target.nitrogen = data.nitrogen / 100;
+      }
+  
+      if (data.solar !== undefined) {
+        target.solar = data.solar;
+        solarLevel = data.solar;
+  
+        document.querySelectorAll('.sol-btn').forEach(b => {
+          b.classList.toggle('lit', parseInt(b.dataset.lv) <= solarLevel);
+        });
+  
+        document.getElementById('solar-label').textContent =
+          ['','Quiet','Mild','Active','Strong!','EXTREME!'][solarLevel];
+      }
+  
+      if (data.latitude !== undefined) {
+        target.latitude = data.latitude;
+  
+        // update UI label
+        document.getElementById('val-latitude').textContent =
+          Math.round(data.latitude) + "°N";
+  
+        // move slider visually
+        document.getElementById('sl-latitude').value = data.latitude;
+      }
+  
+      console.log(
+        "O:", data.oxygen,
+        "| N:", data.nitrogen,
+        "| Solar:", data.solar,
+        "| Lat:", data.latitude
+      );
+  
+    } catch (e) {
+      console.log("bad json:", event.data);
     }
-
-  } catch (e) {
-    console.log("bad json:", event.data);
-  }
-};
-</script>
+  };
+  </script>
 </body>
 </html>
