@@ -561,7 +561,7 @@ canvas.addEventListener('touchend', () => {
 });
 function exitProj() { projOverlay.classList.remove('active'); tabBtn.style.display = ''; }
 </script>
-<!-- ===== UPDATE YOUR WEBSOCKET HANDLER ===== -->
+<!-- ===== FINAL WEBSOCKET HANDLER (ALL 5 CONTROLS) ===== -->
 <script>
   const ws = new WebSocket("ws://192.168.0.116:81");
   
@@ -575,10 +575,14 @@ function exitProj() { projOverlay.classList.remove('active'); tabBtn.style.displ
   
       if (data.oxygen !== undefined) {
         target.oxygen = data.oxygen / 100;
+        document.getElementById('sl-oxygen').value = data.oxygen;
+        document.getElementById('val-oxygen').textContent = data.oxygen + "%";
       }
   
       if (data.nitrogen !== undefined) {
         target.nitrogen = data.nitrogen / 100;
+        document.getElementById('sl-nitrogen').value = data.nitrogen;
+        document.getElementById('val-nitrogen').textContent = data.nitrogen + "%";
       }
   
       if (data.solar !== undefined) {
@@ -595,20 +599,29 @@ function exitProj() { projOverlay.classList.remove('active'); tabBtn.style.displ
   
       if (data.latitude !== undefined) {
         target.latitude = data.latitude;
-  
-        // update UI label
+        document.getElementById('sl-latitude').value = data.latitude;
         document.getElementById('val-latitude').textContent =
           Math.round(data.latitude) + "°N";
+      }
   
-        // move slider visually
-        document.getElementById('sl-latitude').value = data.latitude;
+      if (data.altitude !== undefined) {
+        target.altitude = data.altitude / 100;
+        document.getElementById('sl-altitude').value = data.altitude;
+  
+        const label =
+          data.altitude > 75 ? "High (~280km)" :
+          data.altitude > 45 ? "Mid (~150km)" :
+          "Low (~100km)";
+  
+        document.getElementById('val-altitude').textContent = label;
       }
   
       console.log(
         "O:", data.oxygen,
         "| N:", data.nitrogen,
         "| Solar:", data.solar,
-        "| Lat:", data.latitude
+        "| Lat:", data.latitude,
+        "| Alt:", data.altitude
       );
   
     } catch (e) {
