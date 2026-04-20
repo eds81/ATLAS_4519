@@ -71,6 +71,7 @@
   </style>
 </head>
 <body>
+
 <canvas id="c"></canvas>
 <div id="flash"></div>
 <div id="aurora-name"></div>
@@ -151,6 +152,14 @@ function lerpParams() {
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 let W, H;
+let auroraCanvas = null, auroraCtx = null;
+function ensureOffscreen() {
+  if (!auroraCanvas || auroraCanvas.width !== W || auroraCanvas.height !== H) {
+    auroraCanvas = document.createElement('canvas');
+    auroraCanvas.width = W; auroraCanvas.height = H;
+    auroraCtx = auroraCanvas.getContext('2d');
+  }
+}
 
 function resize() {
   W = canvas.width  = window.innerWidth;
@@ -183,177 +192,181 @@ function drawStars(t) {
   }
 }
 
-// ── per-aurora wandering paths (one per Kp level) ─────────
-// Each aurora has independent sine params + a screen region bias
-// smoothAngle: smoothly interpolated facing direction (updated each frame)
-// sizePhaseA/B: two independent size-breath sine params per aurora
-const AURORAS = [
-  { bx:0.50, by:0.48, smoothAngle:0,
-    sx:[{A:0.18,f:0.000210,p:0.00},{A:0.10,f:0.000134,p:1.57},{A:0.06,f:0.000380,p:0.88},{A:0.04,f:0.000090,p:2.40}],
-    sy:[{A:0.15,f:0.000177,p:0.70},{A:0.08,f:0.000260,p:2.30},{A:0.05,f:0.000430,p:1.20},{A:0.03,f:0.000110,p:0.50}],
-    szA:{f:0.000720,p:0.00}, szB:{f:0.000440,p:1.80},
-  },
-  { bx:0.42, by:0.40, smoothAngle:0,
-    sx:[{A:0.17,f:0.000290,p:2.10},{A:0.11,f:0.000175,p:0.55},{A:0.06,f:0.000450,p:3.80},{A:0.04,f:0.000100,p:1.20}],
-    sy:[{A:0.14,f:0.000220,p:1.40},{A:0.09,f:0.000310,p:0.30},{A:0.05,f:0.000510,p:2.70},{A:0.03,f:0.000080,p:3.10}],
-    szA:{f:0.000610,p:2.50}, szB:{f:0.000390,p:0.40},
-  },
-  { bx:0.58, by:0.56, smoothAngle:0,
-    sx:[{A:0.19,f:0.000340,p:1.20},{A:0.10,f:0.000195,p:3.10},{A:0.06,f:0.000490,p:0.40},{A:0.04,f:0.000120,p:2.00}],
-    sy:[{A:0.13,f:0.000260,p:2.90},{A:0.09,f:0.000380,p:1.65},{A:0.06,f:0.000560,p:0.85},{A:0.04,f:0.000095,p:1.50}],
-    szA:{f:0.000850,p:1.10}, szB:{f:0.000520,p:3.20},
-  },
-  { bx:0.60, by:0.38, smoothAngle:0,
-    sx:[{A:0.16,f:0.000160,p:0.70},{A:0.12,f:0.000245,p:2.40},{A:0.06,f:0.000420,p:1.90},{A:0.04,f:0.000105,p:0.80}],
-    sy:[{A:0.16,f:0.000200,p:3.50},{A:0.08,f:0.000290,p:0.95},{A:0.05,f:0.000470,p:2.10},{A:0.03,f:0.000085,p:2.70}],
-    szA:{f:0.000550,p:0.70}, szB:{f:0.000330,p:1.60},
-  },
-  { bx:0.40, by:0.60, smoothAngle:0,
-    sx:[{A:0.20,f:0.000390,p:1.80},{A:0.12,f:0.000218,p:4.20},{A:0.07,f:0.000530,p:0.10},{A:0.05,f:0.000130,p:3.00}],
-    sy:[{A:0.15,f:0.000310,p:0.60},{A:0.10,f:0.000410,p:3.00},{A:0.06,f:0.000600,p:1.50},{A:0.04,f:0.000115,p:0.30}],
-    szA:{f:0.000940,p:3.40}, szB:{f:0.000580,p:0.90},
-  },
-];
+// ── ribbon-based aurora — horizontal wavy curtains ────────
+const R = () => Math.random();
+const RIBBON_DEPTHS = [1.00, 0.68, 0.45, 0.28, 0.15];
 
-function orbCenter(aur, t) {
-  let dx = 0, dy = 0;
-  for (const s of aur.sx) dx += s.A * Math.sin(s.f * t + s.p);
-  for (const s of aur.sy) dy += s.A * Math.sin(s.f * t + s.p);
-  // Soft boundary: use tanh to gently curve back instead of hard clamping
-  const raw_cx = aur.bx + dx;
-  const raw_cy = aur.by + dy;
-  const cx = (0.50 + 0.22 * Math.tanh((raw_cx - 0.50) / 0.18)) * W;
-  const cy = (0.50 + 0.22 * Math.tanh((raw_cy - 0.50) / 0.18)) * H;
-  return { cx, cy };
+const RIBBONS = [
+  0.40, 0.32, 0.50, 0.24, 0.58
+].map((baseY, i) => ({
+  baseY,
+  idx: i,
+  depth: RIBBON_DEPTHS[i],
+  w: [
+    { A: 0.058 + R()*0.028, f: 0.7 + R()*0.4,  sp: 0.000150 + R()*0.000055, ph: R()*6.28 },
+    { A: 0.022 + R()*0.012, f: 1.6 + R()*0.6,  sp: 0.000085 + R()*0.000032, ph: R()*6.28 },
+  ],
+  driftV:   0,
+  driftVel: (R()-0.5) * 0.000012,
+}));
+
+let lastMs     = 0;
+let sharedDrift = 0;
+
+function updateRibbons(ms) {
+  const dt = Math.min(ms - lastMs, 50);
+  lastMs = ms;
+  if (dt <= 0) return;
+
+  sharedDrift += 0.000085 * dt;
+
+  for (const r of RIBBONS) {
+    r.driftVel += (R()-0.5) * 0.00000012 * dt;
+    r.driftVel *= Math.pow(0.9978, dt);
+    r.driftVel  = Math.max(-0.000020, Math.min(0.000020, r.driftVel));
+    r.driftV   += r.driftVel * dt;
+    r.driftV    = Math.max(-0.055, Math.min(0.055, r.driftV));
+  }
 }
 
-function orbVelocity(aur, t) {
-  let vx = 0, vy = 0;
-  for (const s of aur.sx) vx += s.A * s.f * Math.cos(s.f * t + s.p) * W;
-  for (const s of aur.sy) vy += s.A * s.f * Math.cos(s.f * t + s.p) * H;
-  const len = Math.sqrt(vx*vx + vy*vy) || 1;
-  return { vx: vx/len, vy: vy/len };
+function ribbonY(r, xFrac, t) {
+  let y = r.baseY + r.driftV;
+  const speedMult  = 0.45 + 0.80 * r.depth;
+  const driftMult  = 0.10 + 0.45 * r.depth;
+  for (const w of r.w) {
+    y += w.A * Math.sin(xFrac * w.f * Math.PI * 2 + t * w.sp * speedMult + w.ph + sharedDrift * driftMult);
+  }
+  return y;
 }
 
 // ── blob definitions ──────────────────────────────────────
-// rHead = radius along movement axis, rPerp = radius perpendicular
-// ox/oy = local drift offset (in the orb's rotated frame)
-// flickF/flickP — each blob has its own slow flicker so color distribution is random-feeling
 const BLOB_DEFS = [
-  { r:0,   g:255, b:102,  rHead:270, rPerp:115, ox:0,    oy:0,    spd:0.000320, ph:0.00, baseOpacity:0.90, gas:'O', flickF:0.000480, flickP:0.00 },
-  { r:30,  g:255, b:80,   rHead:210, rPerp:88,  ox:90,   oy:-55,  spd:0.000270, ph:1.10, baseOpacity:0.75, gas:'O', flickF:0.000370, flickP:2.10 },
-  { r:0,   g:255, b:200,  rHead:230, rPerp:95,  ox:-100, oy:40,   spd:0.000210, ph:2.30, baseOpacity:0.60, gas:'O', flickF:0.000290, flickP:1.40 },
-  { r:255, g:60,  b:80,   rHead:155, rPerp:68,  ox:110,  oy:75,   spd:0.000350, ph:0.80, baseOpacity:0.32, gas:'O', flickF:0.000610, flickP:3.80 },
-  { r:40,  g:100, b:255,  rHead:215, rPerp:88,  ox:-80,  oy:-80,  spd:0.000290, ph:3.50, baseOpacity:0.82, gas:'N', flickF:0.000540, flickP:0.70 },
-  { r:200, g:0,   b:255,  rHead:195, rPerp:80,  ox:120,  oy:-25,  spd:0.000240, ph:1.80, baseOpacity:0.72, gas:'N', flickF:0.000430, flickP:2.50 },
-  { r:140, g:30,  b:255,  rHead:165, rPerp:68,  ox:-110, oy:70,   spd:0.000310, ph:2.90, baseOpacity:0.65, gas:'N', flickF:0.000350, flickP:1.20 },
-  { r:180, g:80,  b:255,  rHead:135, rPerp:55,  ox:50,   oy:-100, spd:0.000260, ph:4.10, baseOpacity:0.55, gas:'N', flickF:0.000620, flickP:3.30 },
+  { r:0,   g:255, b:102,  rHead:270, rPerp:115, ox:0,    oy:0,    spd:0.000095, ph:0.00, baseOpacity:0.90, gas:'O', flickF:0.000140, flickP:0.00 },
+  { r:30,  g:255, b:80,   rHead:210, rPerp:88,  ox:90,   oy:-55,  spd:0.000080, ph:1.10, baseOpacity:0.75, gas:'O', flickF:0.000110, flickP:2.10 },
+  { r:0,   g:255, b:200,  rHead:230, rPerp:95,  ox:-100, oy:40,   spd:0.000065, ph:2.30, baseOpacity:0.60, gas:'O', flickF:0.000085, flickP:1.40 },
+  { r:255, g:60,  b:80,   rHead:155, rPerp:68,  ox:110,  oy:75,   spd:0.000105, ph:0.80, baseOpacity:0.32, gas:'O', flickF:0.000175, flickP:3.80 },
+  { r:40,  g:100, b:255,  rHead:215, rPerp:88,  ox:-80,  oy:-80,  spd:0.000088, ph:3.50, baseOpacity:0.82, gas:'N', flickF:0.000155, flickP:0.70 },
+  { r:200, g:0,   b:255,  rHead:195, rPerp:80,  ox:120,  oy:-25,  spd:0.000072, ph:1.80, baseOpacity:0.72, gas:'N', flickF:0.000125, flickP:2.50 },
+  { r:140, g:30,  b:255,  rHead:165, rPerp:68,  ox:-110, oy:70,   spd:0.000092, ph:2.90, baseOpacity:0.65, gas:'N', flickF:0.000100, flickP:1.20 },
+  { r:180, g:80,  b:255,  rHead:135, rPerp:55,  ox:50,   oy:-100, spd:0.000078, ph:4.10, baseOpacity:0.55, gas:'N', flickF:0.000180, flickP:3.30 },
 ];
 
-// Tail segments — each has perpendicular wave params for organic flutter
-// wA = lateral wave amplitude (px), wF = wave frequency (rad/ms), wP = phase offset
 const TAIL_DEFS = [
-  { r:0,   g:255, b:120, dist:200, rHead:180, rPerp:55, opacity:0.38, blur:70,  gas:'O', wA:55,  wF:0.000820, wP:0.00 },
-  { r:0,   g:200, b:255, dist:360, rHead:140, rPerp:42, opacity:0.22, blur:80,  gas:'O', wA:80,  wF:0.000640, wP:1.40 },
-  { r:100, g:0,   b:255, dist:520, rHead:110, rPerp:32, opacity:0.14, blur:90,  gas:'N', wA:100, wF:0.000510, wP:2.70 },
-  { r:60,  g:0,   b:200, dist:680, rHead:80,  rPerp:24, opacity:0.07, blur:105, gas:'N', wA:120, wF:0.000420, wP:0.90 },
+  { r:0,   g:255, b:120, dist:200, rHead:180, rPerp:55, opacity:0.38, blur:70,  gas:'O', wA:55,  wF:0.000240, wP:0.00 },
+  { r:0,   g:200, b:255, dist:360, rHead:140, rPerp:42, opacity:0.22, blur:80,  gas:'O', wA:80,  wF:0.000185, wP:1.40 },
+  { r:100, g:0,   b:255, dist:520, rHead:110, rPerp:32, opacity:0.14, blur:90,  gas:'N', wA:100, wF:0.000150, wP:2.70 },
+  { r:60,  g:0,   b:200, dist:680, rHead:80,  rPerp:24, opacity:0.07, blur:105, gas:'N', wA:120, wF:0.000120, wP:0.90 },
 ];
 
 // ── helper: draw one elongated blob ──────────────────────
-function drawBlob(x, y, rHead, rPerp, angle, r, g, b, eff, blurPx) {
+function drawBlob(actx, x, y, rHead, rPerp, angle, r, g, b, eff) {
   if (eff < 0.005) return;
-  ctx.save();
-  ctx.filter    = `blur(${blurPx}px)`;
-  ctx.globalAlpha = eff;
-  // Rotate so rHead aligns with movement direction
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  ctx.scale(1, rPerp / rHead);
-  // Draw radial gradient as circle; scale makes it elliptical
-  const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, rHead);
-  grad.addColorStop(0,    `rgba(${r},${g},${b},1)`);
-  grad.addColorStop(0.45, `rgba(${r},${g},${b},0.60)`);
-  grad.addColorStop(0.80, `rgba(${r},${g},${b},0.15)`);
+  actx.save();
+  actx.globalAlpha = eff;
+  actx.translate(x, y);
+  actx.rotate(angle);
+  actx.scale(1, rPerp / rHead);
+  const grad = actx.createRadialGradient(0, 0, 0, 0, 0, rHead);
+  grad.addColorStop(0,    `rgba(${r},${g},${b},0.72)`);
+  grad.addColorStop(0.28, `rgba(${r},${g},${b},0.42)`);
+  grad.addColorStop(0.55, `rgba(${r},${g},${b},0.16)`);
+  grad.addColorStop(0.78, `rgba(${r},${g},${b},0.04)`);
   grad.addColorStop(1,    `rgba(${r},${g},${b},0)`);
-  ctx.beginPath();
-  ctx.arc(0, 0, rHead, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
-  ctx.fill();
-  ctx.restore();
+  actx.beginPath();
+  actx.arc(0, 0, rHead, 0, Math.PI * 2);
+  actx.fillStyle = grad;
+  actx.fill();
+  actx.restore();
 }
 
-// ── draw one aurora instance ──────────────────────────────
-function drawOneAurora(aur, t, intens, altScale) {
-  const breath = 0.82 + 0.18 * Math.sin(t * 0.001570 + aur.bx * 6);
-  const { cx, cy } = orbCenter(aur, t);
-  const { vx, vy } = orbVelocity(aur, t);
+// ── draw one ribbon (horizontal wavy curtain) ─────────────
+const RIBBON_STEPS = 18;
 
-  // Smooth rotation: lerp toward velocity angle to avoid snapping
-  const targetAngle = Math.atan2(vy, vx);
-  let da = targetAngle - aur.smoothAngle;
-  if (da >  Math.PI) da -= Math.PI * 2;
-  if (da < -Math.PI) da += Math.PI * 2;
-  aur.smoothAngle += da * 0.018;         // slow lerp — feels like the shape turns lazily
-  const angle = aur.smoothAngle;
+function drawOneRibbon(ribbon, t, intens, altScale) {
+  const breath = 0.88 + 0.12 * Math.sin(t * 0.000380 + ribbon.idx * 1.4);
+  const depthScale   = 0.45 + 0.70 * ribbon.depth;
+  const opacityDepth = 0.30 + 0.80 * ribbon.depth;
+  const rH = W * 0.11 * altScale * depthScale;
+  const rP = H * 0.15 * altScale * depthScale;
 
-  // Size breathing: two slow sines at unique frequencies per aurora
-  // Makes the orb visibly expand and contract over time
-  const sizePulse = 1.0
-    + 0.28 * Math.sin(t * aur.szA.f + aur.szA.p)
-    + 0.14 * Math.sin(t * aur.szB.f + aur.szB.p);
-  const dynScale = altScale * Math.max(0.55, sizePulse);
+  for (let i = 0; i < RIBBON_STEPS; i++) {
+    const xFrac  = i         / (RIBBON_STEPS - 1);
+    const xFracN = (i + 0.5) / (RIBBON_STEPS - 1);
 
-  // Tail — perpendicular (px, py) is the axis 90° to movement
-  const px = -vy, py = vx;
-  for (const td of TAIL_DEFS) {
-    const gasScale = td.gas === 'O' ? live.oxygen : live.nitrogen;
-    const eff = td.opacity * gasScale * intens * breath;
-    if (eff < 0.005) continue;
-    const sway  = td.wA * Math.sin(t * td.wF + td.wP + aur.bx * 4.2);
-    const sway2 = td.wA * 0.38 * Math.sin(t * td.wF * 1.73 + td.wP + 1.1);
-    const tx = cx - vx * td.dist * sizePulse + px * (sway + sway2);
-    const ty = cy - vy * td.dist * sizePulse + py * (sway + sway2);
-    const swayAngle = angle + (sway / td.dist) * 0.55;
-    drawBlob(tx, ty, td.rHead * dynScale, td.rPerp * dynScale, swayAngle, td.r, td.g, td.b, eff, td.blur);
-  }
+    const y0 = ribbonY(ribbon, xFrac,  t);
+    const y1 = ribbonY(ribbon, xFracN, t);
 
-  // Body blobs — each flickers independently for organic colour variation
-  for (const bd of BLOB_DEFS) {
-    const gasScale = bd.gas === 'O' ? live.oxygen : live.nitrogen;
-    const flicker = 0.45 + 0.35 * Math.sin(t * bd.flickF + bd.flickP + aur.bx * 7.3)
-                         + 0.20 * Math.sin(t * bd.flickF * 1.61 + bd.flickP * 1.4 + 0.9);
-    const eff = bd.baseOpacity * gasScale * intens * breath * Math.max(0, flicker);
-    if (eff < 0.01) continue;
-    const driftAlong = bd.ox * Math.sin(t * bd.spd + bd.ph + aur.bx * 5);
-    const driftPerp  = bd.oy * Math.cos(t * bd.spd + bd.ph + aur.by * 5);
-    const localX = cx + vx * driftAlong - vy * driftPerp;
-    const localY = cy + vy * driftAlong + vx * driftPerp;
-    const rH = bd.rHead * dynScale;
-    const rP = bd.rPerp  * dynScale;
-    drawBlob(localX, localY, rH,        rP,        angle, bd.r, bd.g, bd.b, eff * 0.45, 55);
-    drawBlob(localX, localY, rH * 0.48, rP * 0.48, angle, bd.r, bd.g, bd.b, eff * 0.82, 18);
+    const cx  = xFrac * W;
+    const cy  = y0 * H;
+    const angle = Math.atan2((y1 - y0) * H, xFracN * W - xFrac * W);
+
+    const edgeZone = 0.18;
+    const rawFade  = Math.min(xFrac / edgeZone, 1) * Math.min((1 - xFrac) / edgeZone, 1);
+    const edgeFade = rawFade * rawFade * (3 - 2 * rawFade);
+
+    const shimmer = 0.52
+      + 0.30 * Math.sin(t * 0.000095 + xFrac * 6.1 + ribbon.idx * 2.3)
+      + 0.18 * Math.sin(t * 0.000067 + xFrac * 10.4 + ribbon.idx * 1.7);
+    const s = Math.max(0, shimmer);
+
+    const oEff = live.oxygen   * intens * breath * s * edgeFade * opacityDepth;
+    const nEff = live.nitrogen * intens * breath * s * edgeFade * opacityDepth * 0.85;
+
+    const yUp   = cy - rP * 0.45;
+    const yDown = cy + rP * 0.45;
+
+    if (oEff > 0.01) {
+      drawBlob(auroraCtx, cx, cy,    rH,        rP,        angle, 0,  255, 102, oEff * 0.55);
+      drawBlob(auroraCtx, cx, yUp,   rH * 0.70, rP * 0.70, angle, 0,  255, 120, oEff * 0.38);
+      drawBlob(auroraCtx, cx, yDown, rH * 0.65, rP * 0.65, angle, 30, 255, 80,  oEff * 0.32);
+    }
+
+    if (nEff > 0.01) {
+      drawBlob(auroraCtx, cx, yDown,           rH * 0.72, rP * 0.72, angle, 40,  100, 255, nEff * 0.45);
+      drawBlob(auroraCtx, cx, cy + rP * 0.65,  rH * 0.45, rP * 0.45, angle, 160, 40,  255, nEff * 0.50);
+    }
+
+    const redEff = intens * live.oxygen * breath * edgeFade * Math.max(0, (live.altitude - 0.45) * 2.0) * 0.25;
+    if (redEff > 0.01) {
+      drawBlob(auroraCtx, cx, yUp - rP * 0.35, rH * 0.48, rP * 0.48, angle, 255, 50, 70, redEff * 0.38);
+    }
   }
 }
 
 // ── draw all active auroras ───────────────────────────────
 function drawAurora(t) {
+  ensureOffscreen();
+  auroraCtx.clearRect(0, 0, W, H);
+  auroraCtx.globalCompositeOperation = 'screen';
+
   const solNorm  = (live.solar - 1) / 4;
   const latF     = Math.max(0.10, Math.min(1, (live.latitude - 40) / 45));
   const intens   = (0.28 + solNorm * 0.72) * latF;
   const altScale = 0.85 + live.altitude * 0.30;
-  const count    = Math.round(live.solar); // 1 aurora at Kp1, up to 5 at Kp5
+  const count    = Math.round(live.solar);
+
+  for (let i = 0; i < count; i++) {
+    drawOneRibbon(RIBBONS[i], t, intens, altScale);
+  }
 
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
-  for (let i = 0; i < count; i++) {
-    drawOneAurora(AURORAS[i], t, intens, altScale);
-  }
+  ctx.filter = 'blur(52px)';
+  ctx.drawImage(auroraCanvas, 0, 0);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  ctx.filter = 'blur(12px)';
+  ctx.globalAlpha = 0.50;
+  ctx.drawImage(auroraCanvas, 0, 0);
   ctx.restore();
 }
 
 // ── main loop ─────────────────────────────────────────────
 function loop(ms) {
   lerpParams();
+  updateRibbons(ms);
   ctx.fillStyle = '#000000';
   ctx.fillRect(0, 0, W, H);
   drawStars(ms);
@@ -382,13 +395,13 @@ const scienceTips = [
 function makeAuroraName(o, n, sol) {
   const G = ['Emerald','Jade','Verdant','Viridian'];
   const P = ['Amethyst','Violet','Indigo','Cosmic'];
-  const R = ['Crimson','Scarlet','Carmine','Ruby'];
+  const Red = ['Crimson','Scarlet','Carmine','Ruby'];
   const M = ['Polar','Boreal','Celestial','Solar','Arctic'];
   const N = ['Cascade','Symphony','Veil','Curtain','Dreamscape','Tapestry','Wave','Ribbon'];
   const A = ['Grand','Radiant','Blazing','Gentle','Quiet','Vivid','Wild','Ethereal'];
   const col = o>0.70 && n<0.35 ? G[Math.random()*G.length|0]
             : n>0.65 && o<0.40 ? P[Math.random()*P.length|0]
-            : o>0.55 && sol>=4  ? R[Math.random()*R.length|0]
+            : o>0.55 && sol>=4  ? Red[Math.random()*Red.length|0]
             : M[Math.random()*M.length|0];
   return `The ${A[Math.random()*A.length|0]} ${col} ${N[Math.random()*N.length|0]}`;
 }
@@ -440,26 +453,22 @@ document.getElementById('bake-btn').addEventListener('click', () => {
   }, 550);
 });
 
-// ── UI: print recipe card ─────────────────────────────────
+// ── UI: print recipe card (POST to server) ────────────────
 document.getElementById('print-btn').addEventListener('click', async () => {
   const payload = {
-    oxygen: Math.round(live.oxygen * 100),
-    nitrogen: Math.round(live.nitrogen * 100),
-    solar: Math.round(live.solar),
-    latitude: Math.round(live.latitude),
-    altitude: Math.round(live.altitude * 100)
+    oxygen:    Math.round(live.oxygen * 100),
+    nitrogen:  Math.round(live.nitrogen * 100),
+    solar:     Math.round(live.solar),
+    latitude:  Math.round(live.latitude),
+    altitude:  Math.round(live.altitude * 100)
   };
 
   try {
     const res = await fetch("http://172.20.10.6:3000/print", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    
-
     const data = await res.json();
     console.log("🖨️ Printer response:", data);
     alert("Sent to printer!");
@@ -497,88 +506,85 @@ canvas.addEventListener('touchend', () => {
 function exitProj() { projOverlay.classList.remove('active'); tabBtn.style.display = ''; }
 </script>
 
+<!-- ── ESP32 WebSocket ─────────────────────────────────── -->
 <script>
   const ws = new WebSocket("ws://172.20.10.7:81");
-  
+
   ws.onopen = () => {
     console.log("ESP32 CONNECTED");
   };
-  
+
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-  
+
       if (data.oxygen !== undefined) {
         target.oxygen = data.oxygen / 100;
         document.getElementById('sl-oxygen').value = data.oxygen;
         document.getElementById('val-oxygen').textContent = data.oxygen + "%";
       }
-  
+
       if (data.nitrogen !== undefined) {
         target.nitrogen = data.nitrogen / 100;
         document.getElementById('sl-nitrogen').value = data.nitrogen;
         document.getElementById('val-nitrogen').textContent = data.nitrogen + "%";
       }
-  
+
       if (data.solar !== undefined) {
         target.solar = data.solar;
         solarLevel = data.solar;
-  
         document.querySelectorAll('.sol-btn').forEach(b => {
           b.classList.toggle('lit', parseInt(b.dataset.lv) <= solarLevel);
         });
-  
         document.getElementById('solar-label').textContent =
           ['','Quiet','Mild','Active','Strong!','EXTREME!'][solarLevel];
       }
-  
+
       if (data.latitude !== undefined) {
         target.latitude = data.latitude;
         document.getElementById('sl-latitude').value = data.latitude;
         document.getElementById('val-latitude').textContent =
           Math.round(data.latitude) + "°N";
       }
-  
+
       if (data.altitude !== undefined) {
         target.altitude = data.altitude / 100;
         document.getElementById('sl-altitude').value = data.altitude;
-  
         const label =
           data.altitude > 75 ? "High (~280km)" :
           data.altitude > 45 ? "Mid (~150km)" :
           "Low (~100km)";
-  
         document.getElementById('val-altitude').textContent = label;
       }
-      if (data.event === "button_press") {
-  // grab the current aurora name if visible, otherwise generate one
-  const auroraName = document.getElementById('aurora-name').textContent || 
-                     makeAuroraName(live.oxygen, live.nitrogen, live.solar);
-  
-  document.getElementById('bake-btn').click();
 
-  fetch("http://172.20.10.6:3000/print", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      oxygen:    Math.round(live.oxygen * 100),
-      nitrogen:  Math.round(live.nitrogen * 100),
-      solar:     Math.round(live.solar),
-      latitude:  Math.round(live.latitude),
-      altitude:  Math.round(live.altitude * 100),
-      auroraName: auroraName  // ← send the name
-    })
-  })
-  .then(r => r.json())
-  .then(d => console.log("🖨️ Printed!", d))
-  .catch(e => console.error("❌ Print failed:", e));
-}
-  
-  
+      if (data.event === "button_press") {
+        const auroraName = document.getElementById('aurora-name').textContent ||
+                           makeAuroraName(live.oxygen, live.nitrogen, live.solar);
+
+        document.getElementById('bake-btn').click();
+
+        fetch("http://172.20.10.6:3000/print", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            oxygen:    Math.round(live.oxygen * 100),
+            nitrogen:  Math.round(live.nitrogen * 100),
+            solar:     Math.round(live.solar),
+            latitude:  Math.round(live.latitude),
+            altitude:  Math.round(live.altitude * 100),
+            auroraName: auroraName
+          })
+        })
+        .then(r => r.json())
+        .then(d => console.log("🖨️ Printed!", d))
+        .catch(e => console.error("❌ Print failed:", e));
+      }
+
     } catch (e) {
       console.log("bad json:", event.data);
     }
   };
-  </script>
+</script>
+
 </body>
 </html>
