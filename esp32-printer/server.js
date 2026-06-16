@@ -104,7 +104,7 @@ app.post("/print", (req, res) => {
   <div class="row"><span class="label">Latitude</span><span>${data.latitude}°N</span></div>
   <div class="row"><span class="label">Altitude</span><span>${altLabel}</span></div>
   <hr class="divider">
-  <img class="qr" src="http://172.20.10.6:3000/qr" />
+  <img class="qr" src="http://YOURSATICIP:3000/qr" />
   <div class="qr-label">ATLAS 4519</div>
 </body>
 </html>`;

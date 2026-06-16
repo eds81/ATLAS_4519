@@ -464,7 +464,7 @@ document.getElementById('print-btn').addEventListener('click', async () => {
   };
 
   try {
-    const res = await fetch("http://172.20.10.6:3000/print", {
+    const res = await fetch("http://YOURSTATICIP:3000/print", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -508,7 +508,7 @@ function exitProj() { projOverlay.classList.remove('active'); tabBtn.style.displ
 
 <!-- ── ESP32 WebSocket ─────────────────────────────────── -->
 <script>
-  const ws = new WebSocket("ws://172.20.10.7:81");
+  const ws = new WebSocket("ws://YOURSTATICIP:81");
 
   ws.onopen = () => {
     console.log("ESP32 CONNECTED");
@@ -563,7 +563,7 @@ function exitProj() { projOverlay.classList.remove('active'); tabBtn.style.displ
 
         document.getElementById('bake-btn').click();
 
-        fetch("http://172.20.10.6:3000/print", {
+        fetch("http://192.168.2.48:3000/print", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
