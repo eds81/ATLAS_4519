@@ -12,7 +12,6 @@ ReadMe written by Erin Fels in collaboration with Gemini.</h5>
 <h5><code>Step 2:</code> Now use the supplied and created Aurora A La Carte Website that gives you the exact functionality you need</h5>
 <h5><code>Step 3:</code> Utilize a wireless microcontroller that can connect with your computer through wifi and use the supplied code on github (e.g. ESP32 or TinyCore). Create the physical interaction with your chosen buttons or sliders (Our choosen ones are linked below). For setup, follow our steps below. </h5>
 <h5><code>Step 4:</code> Finally move your elements and ingredients around and create your own.</h5>
-<br></br>
 
 <br></br>
 
