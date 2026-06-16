@@ -117,7 +117,7 @@ Test the system by moving your hardware sliders and watching the aurora become y
 
 ---
 
-##Links:
+## Links:
 
 <p><a href="https://atlas-4519.vercel.app/">Aurora Al A Carte</a></p>
 <p><a href="https://www.instructables.com/Peppers-Ghost-Illusion-in-a-Small-Space/">Peppers Ghost Small Space</a></p>
